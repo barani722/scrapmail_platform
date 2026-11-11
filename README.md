@@ -20,12 +20,42 @@ Agency discovery and database platform.
 
 ## Getting started
 
-```bash
-pnpm install
-pnpm exec supabase --version
-```
+1. Install dependencies:
 
-Full setup instructions will be added during Milestone 1.
+   ```bash
+   pnpm install
+   ```
+
+2. Create `apps/web/.env.local` from `apps/web/.env.example` and fill in the
+   Supabase **dev** project values (Supabase dashboard > Project Settings > API Keys).
+
+3. Link the Supabase CLI to the dev project (once per machine):
+
+   ```bash
+   pnpm exec supabase login
+   pnpm exec supabase link --project-ref <dev-project-ref>
+   ```
+
+4. Start the app and open http://localhost:3000. The home page shows
+   "Supabase: connected" when the setup is correct.
+
+   ```bash
+   pnpm dev
+   ```
+
+### Scripts
+
+| Command             | What it does                          |
+| ------------------- | ------------------------------------- |
+| `pnpm dev`          | Start the web app in development mode |
+| `pnpm build`        | Production build                      |
+| `pnpm lint`         | ESLint                                |
+| `pnpm typecheck`    | TypeScript type check                 |
+| `pnpm format`       | Format all files with Prettier        |
+| `pnpm format:check` | Check formatting (used in CI)         |
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow and
+[docs/adr](docs/adr) for architecture decisions.
 
 ## Database (Supabase)
 
