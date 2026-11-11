@@ -56,6 +56,21 @@ jobs:
       - name: Run pgTAP tests
         run: pnpm exec supabase test db
 
+  workers:
+    name: Workers (Python lint + tests)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: workers
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.3
+      - run: uv sync --locked
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run pytest -q
+
   secrets:
     name: Secret scan
     runs-on: ubuntu-latest

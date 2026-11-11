@@ -1,0 +1,37 @@
+[project]
+name = "scrapmail-worker"
+version = "0.1.0"
+description = "Scrap&Mail background workers: data import and website scraping"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+  "beautifulsoup4>=4.15,<5",
+  "httpx>=0.28,<0.29",
+  "lxml>=6.1,<7",
+  "openpyxl>=3.1,<4",
+  "python-dotenv>=1.2,<2",
+  "tldextract>=5.4,<6",
+]
+
+[dependency-groups]
+dev = ["pytest>=8,<10", "ruff>=0.14,<1"]
+
+[tool.uv]
+# Only install package versions released at least two weeks before this date.
+exclude-newer = "2026-10-28T00:00:00Z"
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["scrapmail_worker"]
