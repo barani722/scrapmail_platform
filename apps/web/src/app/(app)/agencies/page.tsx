@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import {
+  CountryFilter,
   FilterSelect,
   Pagination,
   SearchInput,
@@ -14,6 +15,7 @@ import { EmptyState, PageHeader } from "@/components/app/page-header";
 import { StatusBadge } from "@/components/app/status-badge";
 import { Button } from "@/components/ui/button";
 import { parseFilters, queryAgencies } from "@/lib/agencies";
+import { countryName } from "@/lib/countries";
 import { requireWorkspace } from "@/lib/auth/workspace";
 import { createClient } from "@/lib/supabase/server";
 
@@ -91,16 +93,13 @@ export default async function AgenciesPage({ searchParams }: Props) {
           placeholder="Search name, website or services…"
           className="max-w-md"
         />
-        <FilterSelect
-          param="country"
-          label="Country"
-          options={[
-            { value: "", label: "All countries" },
-            ...countries.map((c) => ({
-              value: c.country_code ?? "none",
-              label: `${c.country_code ?? "Unknown"} (${c.total.toLocaleString()})`,
-            })),
-          ]}
+        <CountryFilter
+          counts={Object.fromEntries(
+            countries
+              .filter((c) => c.country_code)
+              .map((c) => [c.country_code as string, Number(c.total)]),
+          )}
+          unknown={Number(countries.find((c) => !c.country_code)?.total ?? 0)}
         />
         <FilterSelect
           param="email"
@@ -190,7 +189,7 @@ export default async function AgenciesPage({ searchParams }: Props) {
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      {a.country_code ?? a.country_name ?? "—"}
+                      {countryName(a.country_code) ?? a.country_name ?? "—"}
                     </td>
                     <td className="max-w-sm px-4 py-3 text-muted-foreground">
                       <span className="line-clamp-2">

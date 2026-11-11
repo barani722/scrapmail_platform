@@ -5,7 +5,7 @@ import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import { Select } from "@/components/ui/select";
+import { DropdownSelect } from "@/components/ui/dropdown-select";
 
 import { cancelJob, createEnrichJob } from "./actions";
 
@@ -22,16 +22,18 @@ export function NewJobForm() {
 
   return (
     <div className="mt-4 flex flex-wrap items-center gap-3">
-      <Select
-        aria-label="Which agencies"
+      <DropdownSelect
+        label="Which agencies"
         value={filter}
-        onChange={(e) => setFilter(e.target.value)}
+        onValueChange={setFilter}
         disabled={pending}
-      >
-        <option value="missing_email">Agencies without an email</option>
-        <option value="never_checked">Agencies never checked</option>
-        <option value="all">All agencies with a website</option>
-      </Select>
+        className="w-64"
+        options={[
+          { value: "missing_email", label: "Agencies without an email" },
+          { value: "never_checked", label: "Agencies never checked" },
+          { value: "all", label: "All agencies with a website" },
+        ]}
+      />
       <Button onClick={start} disabled={pending}>
         {pending ? <Loader2 className="animate-spin" /> : <Play />}
         {pending ? "Starting…" : "Start job"}

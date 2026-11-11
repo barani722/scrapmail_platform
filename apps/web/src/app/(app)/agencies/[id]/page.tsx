@@ -4,6 +4,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { LiveRefresh } from "@/components/app/live-refresh";
+import { countryName } from "@/lib/countries";
 import { requireWorkspace } from "@/lib/auth/workspace";
 import { createClient } from "@/lib/supabase/server";
 
@@ -70,7 +71,7 @@ export default async function AgencyPage({
 
   const facts: [string, string | null][] = [
     ["Domain", agency.identity_key],
-    ["Country", agency.country_code ?? agency.country_name],
+    ["Country", countryName(agency.country_code) ?? agency.country_name],
     ["City", agency.city],
     ["Address", agency.address],
     ["Phone", agency.phone],
