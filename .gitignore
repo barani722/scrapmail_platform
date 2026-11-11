@@ -1,0 +1,47 @@
+# --- Client source data -------------------------------------------------
+# docs/ root holds client spreadsheets with personal contact details.
+# Never commit them. Project documentation lives in docs/adr/ only.
+docs/*
+design/*
+!docs/adr/
+
+# --- Dependencies -------------------------------------------------------
+node_modules/
+.pnpm-store/
+
+# --- Build output -------------------------------------------------------
+.next/
+out/
+dist/
+build/
+*.tsbuildinfo
+next-env.d.ts
+
+# --- Environment & secrets ----------------------------------------------
+.env
+.env.*
+!.env.example
+.vercel/
+
+# --- Supabase CLI local state -------------------------------------------
+supabase/.branches/
+supabase/.temp/
+
+# --- Python (workers) ---------------------------------------------------
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# --- Tests & coverage ---------------------------------------------------
+coverage/
+playwright-report/
+test-results/
+
+# --- OS / editor --------------------------------------------------------
+.DS_Store
+Thumbs.db
+*.log
+.idea/

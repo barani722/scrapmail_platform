@@ -1,0 +1,16 @@
+# Normalize line endings to LF in the repository (we develop on Windows,
+# deploy on Linux: Vercel, Supabase, worker containers).
+* text=auto eol=lf
+
+# Windows-only scripts keep CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Binary files
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff2 binary
+*.xlsx binary
+*.docx binary

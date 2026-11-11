@@ -1,0 +1,13 @@
+{
+  "name": "scrapmail",
+  "private": true,
+  "description": "Scrap&Mail: agency discovery and database platform",
+  "packageManager": "pnpm@12.18.0",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "scripts": {},
+  "devDependencies": {
+    "supabase": "3.1.0"
+  }
+}
