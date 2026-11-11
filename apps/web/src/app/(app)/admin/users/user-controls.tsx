@@ -14,11 +14,19 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select } from "@/components/ui/select";
+import { DropdownSelect } from "@/components/ui/dropdown-select";
+import { cn } from "@/lib/utils";
 
 import { resetUserPassword, setAccountStatus } from "./actions";
 
 const STATUSES = ["pending", "approved", "rejected", "suspended"] as const;
+
+const DOT: Record<(typeof STATUSES)[number], string> = {
+  pending: "bg-warning",
+  approved: "bg-success",
+  rejected: "bg-neutral",
+  suspended: "bg-danger",
+};
 
 export function StatusSelect({
   userId,
@@ -48,19 +56,18 @@ export function StatusSelect({
 
   return (
     <div className="flex items-center gap-2">
-      <Select
-        aria-label="Account status"
+      <DropdownSelect
+        label="Account status"
         value={value}
         disabled={disabled || pending}
-        onChange={(e) => change(e.target.value)}
-        className="w-36"
-      >
-        {STATUSES.map((s) => (
-          <option key={s} value={s}>
-            {s[0]?.toUpperCase() + s.slice(1)}
-          </option>
-        ))}
-      </Select>
+        onValueChange={(next) => next !== value && change(next)}
+        className="w-40"
+        options={STATUSES.map((s) => ({
+          value: s,
+          label: s[0]?.toUpperCase() + s.slice(1),
+          icon: <span className={cn("size-2 shrink-0 rounded-full", DOT[s])} />,
+        }))}
+      />
       {pending && (
         <Loader2 className="size-4 animate-spin text-muted-foreground" />
       )}
@@ -108,11 +115,11 @@ export function ResetPasswordDialog({
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button variant="outline" size="sm">
-          <KeyRound /> Reset password
+          <KeyRound /> Update password
         </Button>
       </DialogTrigger>
       <DialogContent>
-        <DialogTitle>Reset password</DialogTitle>
+        <DialogTitle>Update password</DialogTitle>
         <DialogDescription>
           Set a new password for{" "}
           <span className="font-medium text-foreground">{email}</span>. Share it

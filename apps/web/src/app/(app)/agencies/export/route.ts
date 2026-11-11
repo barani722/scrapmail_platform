@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 
 import { parseFilters, queryAgencies } from "@/lib/agencies";
 import { requireWorkspace } from "@/lib/auth/workspace";
+import { countryName } from "@/lib/countries";
 
 const MAX_ROWS = 20_000;
 const BATCH = 1000;
@@ -41,7 +42,7 @@ export async function GET(request: NextRequest) {
           a.name,
           a.website_url,
           a.identity_key,
-          a.country_code ?? a.country_name,
+          countryName(a.country_code) ?? a.country_name,
           a.description,
           a.agency_contacts
             .map((c) => c.email)

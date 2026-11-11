@@ -87,6 +87,13 @@ export async function resetUserPassword(
     password: parsed.data.password,
   });
   if (error) return { ok: false, error: error.message };
+
+  // Record when (not what): the password itself is never stored readable.
+  await admin
+    .from("profiles")
+    .update({ password_changed_at: new Date().toISOString() })
+    .eq("user_id", parsed.data.userId);
+  revalidatePath("/admin/users");
   return {
     ok: true,
     message: "Password updated. Share it with the user securely.",

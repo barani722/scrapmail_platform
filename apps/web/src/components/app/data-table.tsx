@@ -8,13 +8,19 @@ import {
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
+  Globe,
   Loader2,
   Search,
   X,
 } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 
-import { Select } from "@/components/ui/select";
+import { Combobox } from "@/components/ui/combobox";
+import {
+  type DropdownOption,
+  DropdownSelect,
+} from "@/components/ui/dropdown-select";
+import { ALL_COUNTRIES } from "@/lib/countries";
 import { cn } from "@/lib/utils";
 
 import { useUrlParams } from "./use-url-params";
@@ -81,7 +87,7 @@ export function SearchInput({
   );
 }
 
-/** Select that applies its value to the URL immediately. */
+/** Dropdown that applies its value to the URL immediately. */
 export function FilterSelect({
   param,
   label,
@@ -90,23 +96,74 @@ export function FilterSelect({
 }: {
   param: string;
   label: string;
-  options: { value: string; label: string }[];
+  options: DropdownOption[];
   className?: string;
 }) {
   const { searchParams, setParams } = useUrlParams();
   return (
-    <Select
-      aria-label={label}
+    <DropdownSelect
+      label={label}
       value={searchParams.get(param) ?? ""}
-      onChange={(e) => setParams({ [param]: e.target.value || null })}
+      onValueChange={(value) => setParams({ [param]: value || null })}
+      options={options}
       className={className}
-    >
-      {options.map((o) => (
-        <option key={o.value} value={o.value}>
-          {o.label}
-        </option>
-      ))}
-    </Select>
+    />
+  );
+}
+
+/**
+ * Searchable country filter with every country in the world.
+ * Countries that already have agencies are listed first with their count.
+ */
+export function CountryFilter({
+  counts,
+  unknown,
+  className,
+}: {
+  counts: Record<string, number>;
+  unknown: number;
+  className?: string;
+}) {
+  const { searchParams, setParams } = useUrlParams();
+  const withData = ALL_COUNTRIES.filter((c) => counts[c.code]).sort(
+    (a, b) => (counts[b.code] ?? 0) - (counts[a.code] ?? 0),
+  );
+  const option = (c: { code: string; name: string }) => ({
+    value: c.code,
+    label: c.name,
+    hint: counts[c.code] ? counts[c.code]!.toLocaleString() : undefined,
+    keywords: [c.code],
+    muted: !counts[c.code],
+  });
+
+  return (
+    <Combobox
+      label="All countries"
+      searchPlaceholder="Search countries…"
+      emptyText="No country found."
+      icon={<Globe className="size-4 text-muted-foreground" />}
+      value={searchParams.get("country") ?? ""}
+      onValueChange={(value) => setParams({ country: value || null })}
+      className={cn("w-56", className)}
+      groups={[
+        {
+          options: [
+            { value: "", label: "All countries" },
+            ...(unknown
+              ? [
+                  {
+                    value: "none",
+                    label: "Unknown country",
+                    hint: unknown.toLocaleString(),
+                  },
+                ]
+              : []),
+          ],
+        },
+        { heading: "In your database", options: withData.map(option) },
+        { heading: "All countries", options: ALL_COUNTRIES.map(option) },
+      ]}
+    />
   );
 }
 
@@ -182,20 +239,18 @@ export function Pagination({
           <ChevronsRight className="size-4" />,
         )}
       </div>
-      <Select
-        aria-label="Rows per page"
+      <DropdownSelect
+        label="Rows per page"
+        size="sm"
         value={String(pageSize)}
-        onChange={(e) =>
-          setParams({ size: e.target.value === "50" ? null : e.target.value })
+        onValueChange={(value) =>
+          setParams({ size: value === "50" ? null : value })
         }
-        className="w-auto"
-      >
-        {[25, 50, 100].map((n) => (
-          <option key={n} value={n}>
-            {n} / page
-          </option>
-        ))}
-      </Select>
+        options={[25, 50, 100].map((n) => ({
+          value: String(n),
+          label: `${n} / page`,
+        }))}
+      />
     </div>
   );
 }

@@ -5,6 +5,7 @@ import { LiveRefresh } from "@/components/app/live-refresh";
 import { EmptyState, PageHeader } from "@/components/app/page-header";
 import { StatusBadge, type Tone } from "@/components/app/status-badge";
 import { requireAdmin, type AccountStatus } from "@/lib/auth/session";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
 import { ResetPasswordDialog, StatusSelect } from "./user-controls";
@@ -18,7 +19,7 @@ type Row = {
   status: AccountStatus;
   platform_role: "user" | "admin";
   created_at: string;
-  reviewed_at: string | null;
+  password_changed_at: string | null;
 };
 
 const TONE: Record<AccountStatus, Tone> = {
@@ -28,18 +29,33 @@ const TONE: Record<AccountStatus, Tone> = {
   suspended: "danger",
 };
 
+const when = (value: string | null | undefined) =>
+  value
+    ? new Date(value).toLocaleString("en-GB", {
+        dateStyle: "medium",
+        timeStyle: "short",
+      })
+    : "—";
+
 export default async function AdminUsersPage() {
   const me = await requireAdmin();
   const supabase = await createClient();
-  const { data: users } = await supabase
-    .from("profiles")
-    .select(
-      "user_id, email, full_name, status, platform_role, created_at, reviewed_at",
-    )
-    .order("status", { ascending: true })
-    .order("created_at", { ascending: false })
-    .returns<Row[]>();
+  const [{ data: users }, authUsers] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select(
+        "user_id, email, full_name, status, platform_role, created_at, password_changed_at",
+      )
+      .order("status", { ascending: true })
+      .order("created_at", { ascending: false })
+      .returns<Row[]>(),
+    // Sign-in times live in Supabase Auth (server-side admin API, admins only).
+    createAdminClient().auth.admin.listUsers({ perPage: 1000 }),
+  ]);
 
+  const lastSignIn = new Map(
+    (authUsers.data?.users ?? []).map((u) => [u.id, u.last_sign_in_at ?? null]),
+  );
   const pending = users?.filter((u) => u.status === "pending").length ?? 0;
 
   return (
@@ -49,7 +65,7 @@ export default async function AdminUsersPage() {
         description={
           pending
             ? `${pending} registration ${pending === 1 ? "request is" : "requests are"} waiting for review.`
-            : "Review registrations, change account status and reset passwords."
+            : "Review registrations, change account status and update passwords."
         }
         actions={<LiveRefresh tables={["profiles"]} minIntervalMs={1000} />}
       />
@@ -64,9 +80,10 @@ export default async function AdminUsersPage() {
                 <th className="px-5 py-3 font-medium">Name</th>
                 <th className="px-5 py-3 font-medium">Email</th>
                 <th className="px-5 py-3 font-medium">Registered</th>
+                <th className="px-5 py-3 font-medium">Last sign-in</th>
                 <th className="px-5 py-3 font-medium">Status</th>
                 <th className="px-5 py-3 font-medium">Change status</th>
-                <th className="px-5 py-3 text-right font-medium">Password</th>
+                <th className="px-5 py-3 font-medium">Password</th>
               </tr>
             </thead>
             <tbody className="divide-y">
@@ -89,6 +106,9 @@ export default async function AdminUsersPage() {
                     <td className="px-5 py-4 whitespace-nowrap text-muted-foreground">
                       {new Date(user.created_at).toLocaleDateString("en-GB")}
                     </td>
+                    <td className="px-5 py-4 whitespace-nowrap text-muted-foreground">
+                      {when(lastSignIn.get(user.user_id))}
+                    </td>
                     <td className="px-5 py-4">
                       <StatusBadge tone={TONE[user.status]}>
                         {user.status}
@@ -110,11 +130,18 @@ export default async function AdminUsersPage() {
                         />
                       )}
                     </td>
-                    <td className="px-5 py-4 text-right">
-                      <ResetPasswordDialog
-                        userId={user.user_id}
-                        email={user.email}
-                      />
+                    <td className="px-5 py-4">
+                      <div className="flex items-center gap-3">
+                        <ResetPasswordDialog
+                          userId={user.user_id}
+                          email={user.email}
+                        />
+                        <span className="text-xs whitespace-nowrap text-muted-foreground">
+                          {user.password_changed_at
+                            ? `Changed ${when(user.password_changed_at)}`
+                            : "Set by user"}
+                        </span>
+                      </div>
                     </td>
                   </tr>
                 );
