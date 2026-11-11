@@ -5,6 +5,8 @@ import { cookies } from "next/headers";
 
 import { clientEnv } from "@/env/client";
 
+import { applyRememberChoice, REMEMBER_COOKIE } from "./cookies";
+
 /**
  * Supabase client for Server Components, Server Actions and Route Handlers.
  * Acts as the signed-in user (session from cookies), so RLS applies.
@@ -12,6 +14,7 @@ import { clientEnv } from "@/env/client";
  */
 export async function createClient() {
   const cookieStore = await cookies();
+  const remember = cookieStore.get(REMEMBER_COOKIE)?.value;
 
   return createServerClient(
     clientEnv.NEXT_PUBLIC_SUPABASE_URL,
@@ -24,11 +27,15 @@ export async function createClient() {
         setAll(cookiesToSet) {
           try {
             for (const { name, value, options } of cookiesToSet) {
-              cookieStore.set(name, value, options);
+              cookieStore.set(
+                name,
+                value,
+                applyRememberChoice(options, remember),
+              );
             }
           } catch {
             // Called from a Server Component, where cookies are read-only.
-            // Session refresh happens in the request proxy (added with auth).
+            // The request proxy (src/proxy.ts) refreshes sessions instead.
           }
         },
       },
