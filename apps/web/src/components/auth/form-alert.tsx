@@ -15,7 +15,7 @@ export function FormAlert({
         "rounded-lg px-4 py-3 text-sm",
         error
           ? "bg-destructive/10 text-destructive"
-          : "bg-green-50 text-green-800",
+          : "bg-success-surface text-success",
       )}
     >
       {error ?? message}

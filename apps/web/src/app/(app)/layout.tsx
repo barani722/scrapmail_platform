@@ -1,49 +1,41 @@
-import { CircleUserRound, LogOut } from "lucide-react";
+import { cookies } from "next/headers";
 import type { ReactNode } from "react";
 
-import { SidebarNav } from "@/components/app/sidebar-nav";
-import { Logo } from "@/components/brand/logo";
+import { AppShell } from "@/components/app/app-shell";
+import {
+  SIDEBAR_COLLAPSED_COOKIE,
+  SIDEBAR_DEFAULT_WIDTH,
+  SIDEBAR_MAX_WIDTH,
+  SIDEBAR_MIN_WIDTH,
+  SIDEBAR_WIDTH_COOKIE,
+} from "@/components/app/sidebar-config";
 import { signOut } from "@/lib/auth/actions";
 import { requireApprovedProfile } from "@/lib/auth/session";
 
 /** Shell for all signed-in pages: approved accounts only. */
 export default async function AppLayout({ children }: { children: ReactNode }) {
   const profile = await requireApprovedProfile();
-  const displayName = profile.full_name || profile.email;
+  const cookieStore = await cookies();
+
+  // Sidebar state is stored in cookies so the first render matches the user's choice.
+  const collapsed = cookieStore.get(SIDEBAR_COLLAPSED_COOKIE)?.value === "1";
+  const savedWidth = Number(cookieStore.get(SIDEBAR_WIDTH_COOKIE)?.value);
+  const width =
+    Number.isFinite(savedWidth) &&
+    savedWidth >= SIDEBAR_MIN_WIDTH &&
+    savedWidth <= SIDEBAR_MAX_WIDTH
+      ? savedWidth
+      : SIDEBAR_DEFAULT_WIDTH;
 
   return (
-    <div className="flex min-h-dvh">
-      <aside className="hidden w-72 shrink-0 flex-col bg-sidebar px-5 py-8 md:flex">
-        <Logo className="px-3" />
-        <SidebarNav isAdmin={profile.platform_role === "admin"} />
-      </aside>
-
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-20 items-center justify-between gap-4 border-b px-6 md:px-10">
-          <div className="md:hidden">
-            <Logo markOnly />
-          </div>
-          <div className="ml-auto flex items-center gap-4">
-            <span className="flex items-center gap-2 text-base font-medium">
-              <CircleUserRound
-                aria-hidden="true"
-                className="size-8 text-muted-foreground"
-              />
-              <span className="hidden sm:inline">{displayName}</span>
-            </span>
-            <form action={signOut}>
-              <button
-                type="submit"
-                className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
-              >
-                <LogOut aria-hidden="true" className="size-4" />
-                Sign out
-              </button>
-            </form>
-          </div>
-        </header>
-        <main className="flex-1 px-6 py-8 md:px-10">{children}</main>
-      </div>
-    </div>
+    <AppShell
+      displayName={profile.full_name || profile.email}
+      isAdmin={profile.platform_role === "admin"}
+      initialCollapsed={collapsed}
+      initialWidth={width}
+      signOut={signOut}
+    >
+      {children}
+    </AppShell>
   );
 }

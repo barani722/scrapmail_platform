@@ -2,12 +2,14 @@ import { Building2, Layers, Mail, ShieldCheck } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import { AutoRefresh } from "@/components/app/auto-refresh";
+import { AnimatedNumber } from "@/components/app/animated-number";
+import { TableFrame } from "@/components/app/data-table";
 import {
   JobProgress,
   type JobStatus,
   JobStatusBadge,
 } from "@/components/app/job-status";
+import { LiveRefresh } from "@/components/app/live-refresh";
 import { EmptyState } from "@/components/app/page-header";
 import { requireWorkspace } from "@/lib/auth/workspace";
 import { createClient } from "@/lib/supabase/server";
@@ -61,13 +63,25 @@ export default async function DashboardPage() {
 
   return (
     <>
-      <AutoRefresh active={(activeJobs.count ?? 0) > 0} seconds={10} />
-      <h1 className="text-4xl font-bold tracking-tight">
-        Welcome back, {firstName}!
-      </h1>
-      <p className="mt-2 text-lg text-muted-foreground">
-        Here&apos;s an overview of your Scrap&amp;Mail activity.
-      </p>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight md:text-4xl">
+            Welcome back, {firstName}!
+          </h1>
+          <p className="mt-2 text-lg text-muted-foreground">
+            Here&apos;s an overview of your Scrap&amp;Mail activity.
+          </p>
+        </div>
+        <LiveRefresh
+          tables={
+            isAdmin
+              ? ["agencies", "agency_contacts", "scrape_jobs", "profiles"]
+              : ["agencies", "agency_contacts", "scrape_jobs"]
+          }
+          workspaceId={workspaceId}
+          minIntervalMs={3000}
+        />
+      </div>
 
       <div className="mt-8 grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
@@ -114,7 +128,7 @@ export default async function DashboardPage() {
             text="Start an enrichment job on the Scraping Jobs page."
           />
         ) : (
-          <div className="overflow-x-auto rounded-xl border bg-card">
+          <TableFrame>
             <table className="w-full text-left text-sm">
               <thead className="bg-muted text-muted-foreground">
                 <tr>
@@ -125,7 +139,10 @@ export default async function DashboardPage() {
               </thead>
               <tbody className="divide-y">
                 {recent.data.map((job) => (
-                  <tr key={job.id}>
+                  <tr
+                    key={job.id}
+                    className="transition-colors hover:bg-muted/50"
+                  >
                     <td className="px-5 py-4 font-medium">{job.title}</td>
                     <td className="px-5 py-4">
                       <JobStatusBadge status={job.status} />
@@ -135,13 +152,14 @@ export default async function DashboardPage() {
                         done={job.done_tasks}
                         failed={job.failed_tasks}
                         total={job.total_tasks}
+                        running={job.status === "running"}
                       />
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </div>
+          </TableFrame>
         )}
       </section>
     </>
@@ -160,14 +178,14 @@ function StatCard({
   href: string;
 }) {
   return (
-    <Link href={href}>
-      <div className="h-full rounded-xl border bg-card p-6 transition-colors hover:border-primary/40">
-        <span className="flex size-12 items-center justify-center rounded-lg bg-accent">
+    <Link href={href} className="group">
+      <div className="h-full rounded-xl border bg-card p-6 shadow-sm transition-all duration-200 group-hover:-translate-y-0.5 group-hover:border-primary/40 group-hover:shadow-md">
+        <span className="flex size-12 items-center justify-center rounded-lg bg-accent transition-transform duration-200 group-hover:scale-110">
           <Icon aria-hidden="true" className="size-6 text-primary" />
         </span>
         <p className="mt-4 text-base text-muted-foreground">{label}</p>
         <p className="mt-1 text-4xl font-bold tracking-tight">
-          {(value ?? 0).toLocaleString()}
+          <AnimatedNumber value={value ?? 0} />
         </p>
       </div>
     </Link>

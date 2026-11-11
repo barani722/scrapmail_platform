@@ -1,16 +1,19 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+/* Dark mode is toggled with the `dark` class on <html> (next-themes). */
+@custom-variant dark (&:where(.dark, .dark *));
+
 /*
- * Design tokens sampled from design/login.png, register.png and dashboard1.png.
- * Light theme only (no dark mode in the approved designs).
+ * Design tokens. Light values sampled from the approved designs
+ * (design/login.png, register.png, dashboard1.png); dark values derived from them.
  */
 :root {
+  color-scheme: light;
   --radius: 0.625rem;
 
   --background: #ffffff;
   --foreground: #111827;
-
   --card: #ffffff;
   --card-foreground: #111827;
   --popover: #ffffff;
@@ -18,16 +21,12 @@
 
   --primary: #2465b3;
   --primary-foreground: #ffffff;
-
   --secondary: #f3f4f8;
   --secondary-foreground: #111827;
-
   --muted: #f3f4f8;
   --muted-foreground: #4b5563;
-
   --accent: #dce8fa;
   --accent-foreground: #1d4f9e;
-
   --destructive: #dc2626;
 
   --border: #e5e7eb;
@@ -40,6 +39,62 @@
   --sidebar-foreground: #111827;
   --sidebar-accent: #ccdef7;
   --sidebar-accent-foreground: #1d4f9e;
+  --sidebar-border: #d3e0f5;
+
+  /* Status colors (badges) */
+  --success-surface: #ecfdf3;
+  --success: #15803d;
+  --warning-surface: #fffbeb;
+  --warning: #b45309;
+  --danger-surface: #fef2f2;
+  --danger: #b91c1c;
+  --info-surface: #eff6ff;
+  --info: #1d4ed8;
+  --neutral-surface: #f1f5f9;
+  --neutral: #475569;
+}
+
+.dark {
+  color-scheme: dark;
+
+  --background: #0b1220;
+  --foreground: #e5e9f0;
+  --card: #111a2b;
+  --card-foreground: #e5e9f0;
+  --popover: #111a2b;
+  --popover-foreground: #e5e9f0;
+
+  --primary: #3a78cf;
+  --primary-foreground: #ffffff;
+  --secondary: #1a2538;
+  --secondary-foreground: #e5e9f0;
+  --muted: #172133;
+  --muted-foreground: #9aa6b8;
+  --accent: #1b2c48;
+  --accent-foreground: #9cc3f5;
+  --destructive: #ef4444;
+
+  --border: #243047;
+  --input: #2f3d57;
+  --ring: #5b9bec;
+
+  --brand-surface: #0f1a2e;
+  --sidebar: #0e1626;
+  --sidebar-foreground: #dbe3ee;
+  --sidebar-accent: #1c2d4a;
+  --sidebar-accent-foreground: #a9cbf7;
+  --sidebar-border: #1e2a40;
+
+  --success-surface: #0f2a1c;
+  --success: #6ee7a0;
+  --warning-surface: #2e2210;
+  --warning: #fcd34d;
+  --danger-surface: #341517;
+  --danger: #fca5a5;
+  --info-surface: #13233f;
+  --info: #93c5fd;
+  --neutral-surface: #1c2638;
+  --neutral: #a8b3c4;
 }
 
 @theme inline {
@@ -68,6 +123,17 @@
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-accent: var(--sidebar-accent);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-success: var(--success);
+  --color-success-surface: var(--success-surface);
+  --color-warning: var(--warning);
+  --color-warning-surface: var(--warning-surface);
+  --color-danger: var(--danger);
+  --color-danger-surface: var(--danger-surface);
+  --color-info: var(--info);
+  --color-info-surface: var(--info-surface);
+  --color-neutral: var(--neutral);
+  --color-neutral-surface: var(--neutral-surface);
 
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
@@ -81,5 +147,15 @@
   }
   body {
     @apply bg-background text-foreground;
+  }
+}
+
+/* Respect users who prefer less motion. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
   }
 }

@@ -77,7 +77,10 @@ class Worker:
             await self._complete(task_id, True, result)
         except PermanentError as exc:
             # The site cannot be processed: record it and do not retry.
-            await self._mark_agency(task["agency_id"], {"website_status": exc.status})
+            await self._mark_agency(
+                task["agency_id"],
+                {"website_status": exc.status, "last_checked_at": datetime.now(UTC).isoformat()},
+            )
             await self._complete(task_id, True, {"status": exc.status, "error": str(exc)})
         except (httpx.HTTPError, TimeoutError) as exc:
             log.warning("task %s temporary error: %s", task_id, exc)
