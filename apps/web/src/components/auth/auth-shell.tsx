@@ -2,6 +2,7 @@ import { Building2, Mail, Search, ShieldCheck } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { Logo } from "@/components/brand/logo";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 type AuthShellProps = {
   headline: string;
@@ -26,8 +27,9 @@ export function AuthShell({ headline, description, children }: AuthShellProps) {
         <Illustration />
       </aside>
 
-      <main className="flex items-center justify-center px-4 py-10 sm:px-8">
-        <div className="w-full max-w-xl">
+      <main className="relative flex items-center justify-center px-4 py-16 sm:px-8">
+        <ThemeToggle className="absolute top-4 right-4" />
+        <div className="w-full max-w-xl animate-in duration-500 fade-in slide-in-from-bottom-3">
           <div className="mb-8 lg:hidden">
             <Logo />
           </div>
@@ -58,20 +60,20 @@ export function SecureNote({ title }: { title: string }) {
 function Illustration() {
   return (
     <div aria-hidden="true" className="relative mt-auto h-72 max-w-lg">
-      <div className="absolute inset-x-12 top-8 bottom-6 rounded-2xl border-8 border-slate-600 bg-white p-6 shadow-sm">
+      <div className="absolute inset-x-12 top-8 bottom-6 rounded-2xl border-8 border-foreground/70 bg-card p-6 shadow-sm">
         {[0, 1, 2].map((row) => (
           <div key={row} className="mb-4 flex items-center gap-4">
-            <span className="flex size-10 items-center justify-center rounded-lg bg-slate-100">
-              <Building2 className="size-5 text-slate-500" />
+            <span className="flex size-10 items-center justify-center rounded-lg bg-muted">
+              <Building2 className="size-5 text-muted-foreground" />
             </span>
-            <span className="h-2.5 w-2/3 rounded-full bg-slate-200" />
+            <span className="h-2.5 w-2/3 rounded-full bg-border" />
           </div>
         ))}
       </div>
-      <span className="absolute top-36 left-0 flex size-20 items-center justify-center rounded-2xl bg-white shadow-md">
+      <span className="absolute top-36 left-0 flex size-20 items-center justify-center rounded-2xl bg-card shadow-md">
         <Search className="size-9 text-primary" />
       </span>
-      <span className="absolute top-0 right-4 flex size-24 items-center justify-center rounded-2xl bg-white shadow-md">
+      <span className="absolute top-0 right-4 flex size-24 items-center justify-center rounded-2xl bg-card shadow-md">
         <Mail className="size-11 text-primary" />
       </span>
     </div>

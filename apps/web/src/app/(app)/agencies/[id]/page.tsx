@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { LiveRefresh } from "@/components/app/live-refresh";
 import { requireWorkspace } from "@/lib/auth/workspace";
 import { createClient } from "@/lib/supabase/server";
 
@@ -55,7 +56,7 @@ export default async function AgencyPage({
 }) {
   const { id } = await params;
   if (!/^[0-9a-f-]{36}$/.test(id)) notFound();
-  await requireWorkspace();
+  const { workspaceId } = await requireWorkspace();
 
   const supabase = await createClient();
   const { data: agency } = await supabase
@@ -96,20 +97,27 @@ export default async function AgencyPage({
             </p>
           )}
         </div>
-        {agency.website_url && (
-          <a
-            href={agency.website_url}
-            target="_blank"
-            rel="noopener noreferrer nofollow"
-            className="inline-flex items-center gap-1 text-primary hover:underline"
-          >
-            Open website <ExternalLink className="size-4" />
-          </a>
-        )}
+        <div className="flex items-center gap-4">
+          <LiveRefresh
+            tables={["agencies", "agency_contacts"]}
+            workspaceId={workspaceId}
+            minIntervalMs={3000}
+          />
+          {agency.website_url && (
+            <a
+              href={agency.website_url}
+              target="_blank"
+              rel="noopener noreferrer nofollow"
+              className="inline-flex items-center gap-1 text-primary hover:underline"
+            >
+              Open website <ExternalLink className="size-4" />
+            </a>
+          )}
+        </div>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
-        <section className="rounded-xl border bg-card p-6">
+        <section className="rounded-xl border bg-card p-6 shadow-sm">
           <h2 className="mb-4 text-lg font-bold">Details</h2>
           <dl className="space-y-3 text-sm">
             {facts.map(([label, value]) => (
@@ -121,7 +129,7 @@ export default async function AgencyPage({
           </dl>
         </section>
 
-        <section className="rounded-xl border bg-card p-6 lg:col-span-2">
+        <section className="rounded-xl border bg-card p-6 shadow-sm lg:col-span-2">
           <h2 className="mb-4 text-lg font-bold">
             Contacts ({agency.agency_contacts.length})
           </h2>
