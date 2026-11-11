@@ -1,4 +1,5 @@
 import path from "node:path";
+import { withSentryConfig } from "@sentry/nextjs";
 import type { NextConfig } from "next";
 
 // Extra hosts allowed to open the *dev* server (e.g. this machine's public IP),
@@ -20,4 +21,10 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+export default withSentryConfig(nextConfig, {
+  // Source map upload needs @sentry/cli (its install script is disabled in
+  // pnpm-workspace.yaml) and a Sentry auth token. Enable later if needed.
+  sourcemaps: { disable: true },
+  telemetry: false,
+  silent: true,
+});

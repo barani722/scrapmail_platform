@@ -15,6 +15,8 @@ const schema = z.object({
   NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: z
     .string()
     .startsWith("sb_publishable_", "must be a Supabase publishable key"),
+  /** Sentry DSN for error monitoring. Optional: monitoring is off without it. */
+  NEXT_PUBLIC_SENTRY_DSN: z.url().optional(),
 });
 
 const vercelUrl = process.env.NEXT_PUBLIC_VERCEL_URL;
@@ -29,4 +31,5 @@ export const clientEnv = parseEnv("client", schema, {
   NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
   NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY:
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
+  NEXT_PUBLIC_SENTRY_DSN: process.env.NEXT_PUBLIC_SENTRY_DSN,
 });
