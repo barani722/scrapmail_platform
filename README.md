@@ -4,12 +4,12 @@ Agency discovery and database platform.
 
 ## Repository layout
 
-| Path | Purpose |
-|---|---|
-| `apps/web` | Next.js web app (deployed to Vercel) |
-| `workers` | Python background workers (run separately from Vercel) |
-| `supabase` | Database migrations, config and tests (Supabase CLI) |
-| `docs/adr` | Architecture decision records |
+| Path       | Purpose                                                |
+| ---------- | ------------------------------------------------------ |
+| `apps/web` | Next.js web app (deployed to Vercel)                   |
+| `workers`  | Python background workers (run separately from Vercel) |
+| `supabase` | Database migrations, config and tests (Supabase CLI)   |
+| `docs/adr` | Architecture decision records                          |
 
 `design/` (UI references) and the client files in `docs/` are kept locally and are not committed.
 

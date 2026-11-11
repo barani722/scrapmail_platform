@@ -6,8 +6,18 @@
   "engines": {
     "node": ">=24 <25"
   },
-  "scripts": {},
+  "scripts": {
+    "dev": "pnpm --filter @scrapmail/web dev",
+    "build": "pnpm --filter @scrapmail/web build",
+    "start": "pnpm --filter @scrapmail/web start",
+    "lint": "pnpm --filter @scrapmail/web lint",
+    "typecheck": "pnpm --filter @scrapmail/web typecheck",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
   "devDependencies": {
-    "supabase": "3.1.0"
+    "prettier": "3.9.10",
+    "prettier-plugin-tailwindcss": "0.8.1",
+    "supabase": "2.122.0"
   }
 }
