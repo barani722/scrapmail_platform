@@ -13,7 +13,9 @@
     "lint": "pnpm --filter @scrapmail/web lint",
     "typecheck": "pnpm --filter @scrapmail/web typecheck",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "worker": "cd workers && uv run python -m scrapmail_worker.worker",
+    "import:client": "cd workers && uv run python -m scrapmail_worker.importer --workspace scrapmail ../docs"
   },
   "devDependencies": {
     "prettier": "3.9.10",
