@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { Inter } from "next/font/google";
+
+import { clientEnv } from "@/env/client";
 import "./globals.css";
 
 const inter = Inter({
@@ -10,6 +12,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(clientEnv.NEXT_PUBLIC_APP_URL),
   title: {
     default: "Scrap&Mail",
     template: "%s · Scrap&Mail",
