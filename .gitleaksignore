@@ -1,0 +1,6 @@
+# Reviewed gitleaks false positives (one fingerprint per line).
+# Only add an entry after confirming the finding is NOT a secret.
+#
+# 2026-11-11: database column names "workspace_id,identity_key" in an upsert call
+# matched the generic-api-key rule. Not a secret.
+62b26f729fd57d47dfedd9ecccceb419df51bb33:workers/scrapmail_worker/importer.py:generic-api-key:193
