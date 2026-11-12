@@ -17,7 +17,10 @@ class Settings:
     supabase_url: str
     supabase_secret_key: str
     worker_id: str
-    concurrency: int
+    concurrency: int  # tasks at once at start; the autopilot adjusts it
+    max_concurrency: int
+    restarts: int  # set by the supervisor
+    status_file: str | None  # heartbeat file read by the supervisor
     user_agent: str
     serper_api_key: str | None
     search_monthly_limit: int
@@ -38,6 +41,9 @@ def load_settings() -> Settings:
         supabase_secret_key=secret,
         worker_id=os.getenv("WORKER_ID") or f"{socket.gethostname()}-{os.getpid()}",
         concurrency=max(1, int(os.getenv("WORKER_CONCURRENCY", "8"))),
+        max_concurrency=max(1, int(os.getenv("WORKER_MAX_CONCURRENCY", "300"))),
+        restarts=int(os.getenv("WORKER_RESTARTS", "0")),
+        status_file=os.getenv("WORKER_STATUS_FILE") or None,
         user_agent=os.getenv(
             "WORKER_USER_AGENT",
             "Mozilla/5.0 (compatible; ScrapMailBot/0.1; business directory research)",

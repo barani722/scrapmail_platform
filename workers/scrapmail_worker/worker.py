@@ -18,15 +18,19 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import logging
 import os
 import signal
+import socket
+import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from typing import Any
 
 import httpx
 
+from .autopilot import Autopilot, SpeedMeter
 from .config import Settings, load_settings
 from .crawler import Crawler, PermanentError, SiteResult
 from .db import Db
@@ -62,6 +66,11 @@ TASK_KINDS = [
     "qualify_candidate",
 ]
 MAX_LINK_CANDIDATES_PER_SITE = 40
+# A task running longer than this is stopped and retried later (it was blocking a slot).
+TASK_DEADLINE_SECONDS = {"discover_osm": 540}
+DEFAULT_TASK_DEADLINE = 240
+TUNE_SECONDS = 5  # autopilot: measure and adjust this often
+STATUS_SECONDS = 30  # heartbeat: report status this often
 
 
 def _now() -> str:
@@ -94,7 +103,7 @@ class Worker:
         self.db = Db(settings)
         self.crawler = Crawler(
             settings.user_agent,
-            max_connections=settings.concurrency * 2,
+            max_connections=settings.max_concurrency * 2,
             parse_processes=max(1, (os.cpu_count() or 2) - 1),
         )
         self.stopping = asyncio.Event()
@@ -104,6 +113,15 @@ class Worker:
         self.search_limiter = RateLimiter(0.5)
         self.search_exhausted = False  # set when Serper reports no credits left
         self.finished: list[dict[str, Any]] = []  # task results waiting to be sent
+        self.autopilot = Autopilot(
+            settings.concurrency,
+            minimum=min(16, settings.max_concurrency),
+            maximum=settings.max_concurrency,
+        )
+        self.speed = SpeedMeter()
+        self.loop_lag = 0.0
+        self.running: dict[asyncio.Task[None], tuple[str, float]] = {}
+        self.started_at = _now()
 
     async def _db(self, method: str, *args: Any, **kwargs: Any) -> Any:
         """Run a (blocking) database call without blocking the event loop."""
@@ -113,24 +131,26 @@ class Worker:
         # Database calls run in threads: one per task, so no task waits for a free thread
         # (the default pool has only cpu_count + 4 threads).
         asyncio.get_running_loop().set_default_executor(
-            ThreadPoolExecutor(max_workers=self.settings.concurrency, thread_name_prefix="db")
+            ThreadPoolExecutor(max_workers=self.settings.max_concurrency, thread_name_prefix="db")
         )
         log.info(
-            "worker %s started (concurrency %d, web search %s)",
+            "worker %s started (concurrency %d, autopilot up to %d, web search %s)",
             self.settings.worker_id,
-            self.settings.concurrency,
+            self.autopilot.limit,
+            self.settings.max_concurrency,
             "enabled" if self.settings.serper_api_key else "not configured",
         )
         # Continuous pool: claim new tasks as soon as slots free up. At most one
         # OpenStreetMap query runs at a time; others stay queued (no lease held).
-        running: dict[asyncio.Task[None], str] = {}
+        running = self.running
         self.finished = []
         flusher = asyncio.create_task(self._flush_loop())
+        monitor = asyncio.create_task(self._monitor())
         while not self.stopping.is_set():
-            free = self.settings.concurrency - len(running)
+            free = self.autopilot.limit - len(running)
             tasks: list[dict[str, Any]] = []
             if free > 0:
-                osm_busy = "discover_osm" in running.values()
+                osm_busy = any(kind == "discover_osm" for kind, _ in running.values())
                 # Found websites are checked first, so new agencies appear right away
                 # instead of after every discovery task of a large job.
                 tasks = await self._claim(free, [k for k in TASK_KINDS if k != "qualify_candidate"])
@@ -147,14 +167,17 @@ class Worker:
                     except Exception:
                         log.exception("could not release task %s (lease will expire)", extra["id"])
                 for task in tasks:
-                    running[asyncio.create_task(self.process(task))] = task["kind"]
+                    running[asyncio.create_task(self.process(task))] = (
+                        task["kind"],
+                        time.monotonic(),
+                    )
 
             if not running:
                 with contextlib.suppress(TimeoutError):
                     await asyncio.wait_for(self.stopping.wait(), IDLE_SECONDS)
                 continue
             # Wait for a task to finish; with free slots, look for new tasks every few seconds.
-            full = len(running) >= self.settings.concurrency
+            full = len(running) >= self.autopilot.limit
             done, _ = await asyncio.wait(
                 running,
                 timeout=None if full else IDLE_SECONDS,
@@ -165,7 +188,9 @@ class Worker:
         if running:
             await asyncio.wait(running)
         flusher.cancel()
+        monitor.cancel()
         await self._flush_results()
+        await self._report_status("stopped")
         await self.crawler.close()
         self.db.close()
         log.info("worker stopped")
@@ -204,7 +229,9 @@ class Worker:
             handler = handlers.get(task["kind"])
             if handler is None:
                 raise ValueError(f"Unknown task kind {task['kind']}")
-            result = await handler(task)
+            deadline = TASK_DEADLINE_SECONDS.get(task["kind"], DEFAULT_TASK_DEADLINE)
+            async with asyncio.timeout(deadline):
+                result = await handler(task)
             await self._complete(task_id, True, result)
         except PermanentError as exc:
             # The site cannot be processed: record it and do not retry.
@@ -625,6 +652,7 @@ class Worker:
         self, task_id: int, success: bool, result: dict[str, Any] | None, error: str | None = None
     ) -> None:
         """Queue the result; results are sent in batches (see _flush_results)."""
+        self.speed.tick()
         self.finished.append({"id": task_id, "success": success, "result": result, "error": error})
 
     async def _flush_results(self) -> None:
@@ -637,6 +665,66 @@ class Worker:
                 log.exception("could not record %d task results; retrying", len(batch))
                 return
             del self.finished[: len(batch)]
+
+    async def _monitor(self) -> None:
+        """Autopilot: measure the main thread, adjust the task limit, report status."""
+        loop = asyncio.get_running_loop()
+        last_report = 0.0
+        while True:
+            await asyncio.sleep(TUNE_SECONDS - 1)
+            started = loop.time()
+            await asyncio.sleep(1)
+            self.loop_lag = max(0.0, loop.time() - started - 1)
+            before = self.autopilot.limit
+            after = self.autopilot.adjust(self.loop_lag, len(self.running))
+            if after != before:
+                log.info(
+                    "autopilot: %d -> %d tasks at once (main thread lag %.2f s)",
+                    before,
+                    after,
+                    self.loop_lag,
+                )
+            if loop.time() - last_report >= STATUS_SECONDS:
+                last_report = loop.time()
+                await self._report_status("running")
+
+    def status(self, state: str) -> dict[str, Any]:
+        now = time.monotonic()
+        oldest = max((now - since for _, since in self.running.values()), default=0.0)
+        return {
+            "worker_id": self.settings.worker_id,
+            "host": socket.gethostname(),
+            "state": state,
+            "started_at": self.started_at,
+            "updated_at": _now(),
+            "concurrency": self.autopilot.limit,
+            "running": len(self.running),
+            "tasks_per_minute": self.speed.per_minute(),
+            "loop_lag_ms": round(self.loop_lag * 1000),
+            "oldest_task_seconds": round(oldest),
+            "restarts": self.settings.restarts,
+        }
+
+    async def _report_status(self, state: str) -> None:
+        """Heartbeat for the website (database) and the supervisor (file)."""
+        status = self.status(state)
+        log.info(
+            "status: %s tasks/min, %d running of %d, main thread lag %d ms",
+            status["tasks_per_minute"],
+            status["running"],
+            status["concurrency"],
+            status["loop_lag_ms"],
+        )
+        if self.settings.status_file:
+            with (
+                contextlib.suppress(OSError),
+                open(self.settings.status_file, "w", encoding="utf-8") as fh,
+            ):
+                json.dump(status, fh)
+        try:
+            await self._db("insert", "worker_status", status, on_conflict="worker_id")
+        except Exception:
+            log.warning("could not report worker status", exc_info=True)
 
     async def _flush_loop(self) -> None:
         while True:

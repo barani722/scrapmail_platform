@@ -1,7 +1,31 @@
 import asyncio
 from types import SimpleNamespace
 
+from scrapmail_worker.autopilot import Autopilot, SpeedMeter
 from scrapmail_worker.worker import Worker
+
+
+def make_worker(concurrency: int) -> Worker:
+    """Worker without network or database (those are replaced per test)."""
+    worker = Worker.__new__(Worker)
+    worker.settings = SimpleNamespace(
+        worker_id="t",
+        concurrency=concurrency,
+        max_concurrency=concurrency,
+        serper_api_key=None,
+        restarts=0,
+        status_file=None,
+    )
+    worker.stopping = asyncio.Event()
+    worker.crawler = SimpleNamespace(close=lambda: asyncio.sleep(0))
+    worker.db = SimpleNamespace(close=lambda: None)
+    worker.autopilot = Autopilot(concurrency, minimum=1, maximum=concurrency)
+    worker.speed = SpeedMeter()
+    worker.loop_lag = 0.0
+    worker.running = {}
+    worker.finished = []
+    worker.started_at = "now"
+    return worker
 
 
 class FakeQueue:
@@ -27,11 +51,7 @@ class FakeQueue:
 
 def test_pool_runs_one_osm_query_at_a_time_and_every_task_once(monkeypatch):
     queue = FakeQueue(["discover_osm"] * 4 + ["qualify_candidate"] * 6)
-    worker = Worker.__new__(Worker)
-    worker.settings = SimpleNamespace(worker_id="t", concurrency=3, serper_api_key=None)
-    worker.stopping = asyncio.Event()
-    worker.crawler = SimpleNamespace(close=lambda: asyncio.sleep(0))
-    worker.db = SimpleNamespace(close=lambda: None)
+    worker = make_worker(3)
     processed: list[int] = []
     active = {"osm": 0, "max_osm": 0, "all": 0, "max_all": 0}
 
@@ -64,11 +84,7 @@ def test_pool_runs_one_osm_query_at_a_time_and_every_task_once(monkeypatch):
 
 def test_found_websites_are_checked_before_other_tasks(monkeypatch):
     queue = FakeQueue(["discover_links"] * 5 + ["qualify_candidate"] * 2)
-    worker = Worker.__new__(Worker)
-    worker.settings = SimpleNamespace(worker_id="t", concurrency=2, serper_api_key=None)
-    worker.stopping = asyncio.Event()
-    worker.crawler = SimpleNamespace(close=lambda: asyncio.sleep(0))
-    worker.db = SimpleNamespace(close=lambda: None)
+    worker = make_worker(2)
     order: list[str] = []
 
     async def fake_db(method, name, params):
@@ -91,8 +107,7 @@ def test_found_websites_are_checked_before_other_tasks(monkeypatch):
 
 def test_task_results_are_sent_in_batches(monkeypatch):
     monkeypatch.setattr("scrapmail_worker.worker.COMPLETE_BATCH", 2)
-    worker = Worker.__new__(Worker)
-    worker.finished = []
+    worker = make_worker(2)
     calls: list[list[int]] = []
 
     async def fake_db(method, name, params):
@@ -109,3 +124,21 @@ def test_task_results_are_sent_in_batches(monkeypatch):
     asyncio.run(scenario())
     assert calls == [[1, 2], [3]]
     assert worker.finished == []
+
+
+def test_autopilot_runs_fewer_tasks_when_overloaded_and_more_when_idle():
+    pilot = Autopilot(100, minimum=16, maximum=200)
+    assert pilot.adjust(lag=1.2, busy=100) == 75  # main thread overloaded
+    assert pilot.adjust(lag=0.05, busy=75) == 91  # room left and all slots busy
+    assert pilot.adjust(lag=0.05, busy=10) == 91  # idle slots: no reason to grow
+    for _ in range(20):
+        pilot.adjust(lag=2.0, busy=100)
+    assert pilot.limit == 16  # never below the minimum
+
+
+def test_speed_meter_counts_the_last_minute():
+    meter = SpeedMeter()
+    meter.tick(30, now=0.0)
+    meter.tick(10, now=50.0)
+    assert meter.per_minute(now=55.0) == 40
+    assert meter.per_minute(now=100.0) == 10

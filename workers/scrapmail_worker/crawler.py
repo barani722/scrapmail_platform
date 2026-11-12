@@ -6,6 +6,7 @@ import asyncio
 from concurrent.futures import ProcessPoolExecutor
 from concurrent.futures.process import BrokenProcessPool
 from dataclasses import dataclass, field
+from http.cookiejar import CookieJar, DefaultCookiePolicy
 from urllib.parse import urlsplit
 from urllib.robotparser import RobotFileParser
 
@@ -59,6 +60,10 @@ class Crawler:
         # Parsing HTML is CPU work: spread it over several processes (cores).
         self._pool = ProcessPoolExecutor(parse_processes) if parse_processes > 1 else None
         self._client = httpx.AsyncClient(
+            # Keep no cookies: a jar shared by thousands of websites grows without
+            # limit, and httpx goes through all of it before every request (the
+            # worker got slower the longer it ran).
+            cookies=CookieJar(policy=DefaultCookiePolicy(allowed_domains=[])),
             follow_redirects=True,
             timeout=httpx.Timeout(15.0, connect=10.0),
             headers={
@@ -106,24 +111,31 @@ class Crawler:
                 raise PermanentError("blocked", f"HTTP {response.status_code}")
             if response.status_code in (404, 410):
                 raise PermanentError("not_found", f"HTTP {response.status_code}")
+            if 400 <= response.status_code < 500:
+                # 405, 406, 451 …: the site refuses us; asking again will not help.
+                raise PermanentError("blocked", f"HTTP {response.status_code}")
             response.raise_for_status()
             if "html" not in response.headers.get("content-type", "html"):
                 raise PermanentError("error", "Not an HTML page")
-            body = b""
+            body = bytearray()
             async for chunk in response.aiter_bytes():
                 body += chunk
                 if len(body) > MAX_BYTES:
                     break
-            return str(response.url), body.decode(response.encoding or "utf-8", "replace")
+            return str(response.url), bytes(body).decode(response.encoding or "utf-8", "replace")
 
     async def crawl(self, url: str, *, partner_pages: bool = False) -> SiteResult:
         """Visit the homepage plus contact/about pages (and partner pages if asked)."""
         try:
             final_url, html = await self._get(url)
-        except httpx.ConnectError as exc:
-            raise PermanentError("unreachable", f"Cannot connect: {exc}") from exc
         except httpx.TooManyRedirects as exc:
             raise PermanentError("error", "Too many redirects") from exc
+        except httpx.TransportError as exc:
+            # Connection refused, timed out or dropped: record the site as offline once
+            # instead of retrying it three times (most of these sites are dead).
+            raise PermanentError(
+                "unreachable", f"{type(exc).__name__}: {exc}".rstrip(": ")
+            ) from exc
 
         robots = await self._robots(final_url)
         if not robots.can_fetch(self._user_agent, final_url):

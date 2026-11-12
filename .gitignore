@@ -45,3 +45,6 @@ test-results/
 Thumbs.db
 *.log
 .idea/
+
+# --- Worker runtime state ------------------------------------------------
+workers/.worker-status.json

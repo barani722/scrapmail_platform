@@ -66,3 +66,35 @@ def test_local_language_agencies_are_rated():
 def test_repeated_keyword_counts_once():
     r = rate("liput")
     assert r.keywords == ["liput"]
+
+
+def test_clubs_jobs_software_and_venues_are_not_agencies():
+    text = "Buy tickets for football matches, concerts and VIP hospitality packages."
+    not_agencies = [
+        "Aston Villa | Official Website",
+        "West Ham United Official Site",
+        "Global Sports Jobs | Jobs in sport",
+        "Goldstar Recruitment - sports recruitment",
+        "Ticket Tailor - online ticketing platform",
+        "Tourwriter - tour operator software",
+        "The NEC Birmingham - exhibition centre",
+        "The Destinations Show - travel show",
+    ]
+    for headline in not_agencies:
+        r = rate(text, headline)
+        assert r.level == "D", headline
+        assert r.keywords[0].startswith("not an agency")
+
+
+def test_real_ticket_and_travel_agencies_stay_relevant():
+    text = "Buy tickets for football matches, concerts and VIP hospitality packages."
+    agencies = [
+        "Sportsevents365 - football tickets and hospitality",
+        "LOVEtheatre - theatre tickets and breaks",
+        "Arsenal Football Club tickets | Premier League hospitality",
+        "Wembley Stadium concert tickets",
+        "Official ticket agency | Official site",  # agency word wins over "official site"
+        "College football tickets and travel packages",
+    ]
+    for headline in agencies:
+        assert rate(text, headline).level == "A", headline
