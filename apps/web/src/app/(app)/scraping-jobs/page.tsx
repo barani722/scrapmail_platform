@@ -16,8 +16,8 @@ import { CancelJobButton, DiscoveryForm, NewJobForm } from "./job-controls";
 
 export const metadata: Metadata = { title: "Scraping Jobs" };
 
-/** Must match BRAVE_MONTHLY_LIMIT in workers/.env (the worker enforces it). */
-const SEARCH_MONTHLY_LIMIT = 950;
+/** Must match SEARCH_MONTHLY_LIMIT in workers/.env (the worker enforces it). */
+const SEARCH_MONTHLY_LIMIT = 2400;
 
 type Job = {
   id: string;
@@ -56,7 +56,7 @@ export default async function ScrapingJobsPage() {
       supabase
         .from("search_usage")
         .select("used")
-        .eq("provider", "brave")
+        .eq("provider", "serper")
         .eq("month", month)
         .maybeSingle<{ used: number }>(),
       supabase

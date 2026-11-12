@@ -7,7 +7,7 @@ Task kinds
   enrich_website     visit a known agency's website, fill empty fields, rate relevance
   discover_osm       list travel agencies of one country from OpenStreetMap
   discover_links     collect links to other websites from a known agency's site
-  discover_search    run one web search (Brave), within the monthly free budget
+  discover_search    run one Google search (Serper), within the search budget
   qualify_candidate  visit a discovered website; create a new agency if it qualifies
 
 Several workers can run at the same time: tasks are claimed atomically, and
@@ -39,9 +39,10 @@ from .relevance import rate
 from .sources import (
     Candidate,
     RateLimiter,
-    brave_search,
+    SearchCreditsExhausted,
     make_candidate,
     osm_travel_agencies,
+    serper_search,
 )
 
 log = logging.getLogger("scrapmail.worker")
@@ -84,7 +85,8 @@ class Worker:
         # Shared, polite limits for external services.
         self.osm_limiter = RateLimiter(5.0)
         self.osm_slots = asyncio.Semaphore(1)
-        self.brave_limiter = RateLimiter(1.1)
+        self.search_limiter = RateLimiter(0.5)
+        self.search_exhausted = False  # set when Serper reports no credits left
 
     async def _db(self, method: str, *args: Any, **kwargs: Any) -> Any:
         """Run a (blocking) database call without blocking the event loop."""
@@ -95,7 +97,7 @@ class Worker:
             "worker %s started (concurrency %d, web search %s)",
             self.settings.worker_id,
             self.settings.concurrency,
-            "enabled" if self.settings.brave_api_key else "not configured",
+            "enabled" if self.settings.serper_api_key else "not configured",
         )
         # Continuous pool: claim new tasks as soon as slots free up. At most one
         # OpenStreetMap query runs at a time; others stay queued (no lease held).
@@ -253,27 +255,38 @@ class Worker:
         results = await self._db(
             "rpc",
             "get_search_cache",
-            {"p_provider": "brave", "p_query": query, "p_country": country},
+            {"p_provider": "serper", "p_query": query, "p_country": country},
         )
         cached = results is not None
         if not cached:
-            if not self.settings.brave_api_key:
-                raise PermanentError("error", "BRAVE_API_KEY is not set in workers/.env")
+            if not self.settings.serper_api_key:
+                raise PermanentError("error", "SERPER_API_KEY is not set in workers/.env")
+            if self.search_exhausted:
+                return {"status": "no_credits", "query": query, "country": country}
             allowed = await self._db(
                 "rpc",
                 "reserve_search_quota",
-                {"p_provider": "brave", "p_monthly_limit": self.settings.brave_monthly_limit},
+                {"p_provider": "serper", "p_monthly_limit": self.settings.search_monthly_limit},
             )
             if not allowed:
                 return {"status": "budget_exhausted", "query": query, "country": country}
-            results = await brave_search(
-                self.crawler.client, self.settings.brave_api_key, query, country, self.brave_limiter
-            )
+            try:
+                results = await serper_search(
+                    self.crawler.client,
+                    self.settings.serper_api_key,
+                    query,
+                    country,
+                    self.search_limiter,
+                )
+            except SearchCreditsExhausted as exc:
+                self.search_exhausted = True
+                log.warning("web search stopped: %s", exc)
+                return {"status": "no_credits", "query": query, "country": country}
             await self._db(
                 "rpc",
                 "put_search_cache",
                 {
-                    "p_provider": "brave",
+                    "p_provider": "serper",
                     "p_query": query,
                     "p_country": country,
                     "p_results": results,
@@ -286,7 +299,7 @@ class Worker:
                 c := make_candidate(
                     r["url"],
                     "search",
-                    f"brave:{country}:{query}",
+                    f"serper:{country}:{query}",
                     country_code=country,
                     raw={"title": r["title"], "description": r["description"]},
                 )
@@ -475,7 +488,7 @@ class Worker:
                 "source_name": {
                     "osm": "OpenStreetMap",
                     "link": "link on agency website",
-                    "search": "web search (Brave)",
+                    "search": "Google search (Serper)",
                 }[cand["source"]],
                 "source_ref": cand["source_ref"] or cand["url"],
                 "raw": raw,

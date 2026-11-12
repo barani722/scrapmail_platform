@@ -29,7 +29,7 @@ their 10-minute lease expires. Raise `WORKER_CONCURRENCY` (default 8) in `.env` 
 | `crawler`   | Polite fetching (robots.txt, timeouts, size limits, no evasion) |
 | `extract`   | Emails, phones, description, location from HTML and schema.org  |
 | `relevance` | Free keyword-based A–E rating (multilingual)                    |
-| `sources`   | Discovery sources: OpenStreetMap (Overpass) and Brave Search    |
+| `sources`   | Discovery sources: OpenStreetMap (Overpass) and Serper (Google) |
 | `worker`    | Queue loop: discovery, qualification, enrichment                |
 
 Tests: `uv run pytest`. Lint: `uv run ruff check . && uv run ruff format --check .`
@@ -38,7 +38,7 @@ Tests: `uv run pytest`. Lint: `uv run ruff check . && uv run ruff format --check
 
 1. A discovery job finds candidate websites (OpenStreetMap per country: travel agencies,
    tour operators, ticket offices, concierges; links on
-   known agency websites; or Brave web searches).
+   known agency websites; or Google searches via Serper).
 2. Each candidate is stored once per workspace (`discovery_candidates`); websites
    already in the agency database are skipped.
 3. A `qualify_candidate` task visits the website and rates it. OpenStreetMap
@@ -46,8 +46,10 @@ Tests: `uv run pytest`. Lint: `uv run ruff check . && uv run ruff format --check
    link/search results only when rated A–C. A = sells tickets for live events.
 4. New agencies get emails, phone, country, relevance and full provenance.
 
-Web search uses `BRAVE_API_KEY` and stops at `BRAVE_MONTHLY_LIMIT` searches per
-month (default 950, inside Brave's free credit). Results are cached 30 days.
+Web search uses `SERPER_API_KEY` (Google results per country) and stops at
+`SEARCH_MONTHLY_LIMIT` searches per month (default 2,400, inside Serper's 2,500
+free credits). When the credits run out, the remaining searches are skipped.
+Results are cached 30 days, so repeating a search costs nothing.
 
 ### Monthly routine (suggested)
 

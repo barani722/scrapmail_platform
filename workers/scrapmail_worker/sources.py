@@ -1,4 +1,4 @@
-"""Discovery sources: OpenStreetMap (free) and Brave Search (free monthly credit).
+"""Discovery sources: OpenStreetMap (free) and Google search via Serper (free credits).
 
 Both return Candidate objects. Nothing here writes to the database.
 """
@@ -31,7 +31,8 @@ OVERPASS_URLS = [
 OVERPASS_BUDGET_SECONDS = 480  # below the worker's 600 s task lease
 OVERPASS_ROUND_PAUSE = 30
 OSM_USER_AGENT = "ScrapMail/0.1 (travel agency directory research)"
-BRAVE_URL = "https://api.search.brave.com/res/v1/web/search"
+SERPER_URL = "https://google.serper.dev/search"
+SERPER_RESULTS = 10  # more than 10 results costs 2 credits per search
 
 # Websites that are never agencies (platforms, social networks, media, reviews).
 NOT_AGENCIES = {
@@ -254,25 +255,35 @@ async def osm_travel_agencies(
     return [c for element in data.get("elements", []) if (c := osm_candidate(element, country))]
 
 
-async def brave_search(
+class SearchCreditsExhausted(Exception):
+    """The search provider has no credits left (or the key is invalid)."""
+
+
+async def serper_search(
     client: httpx.AsyncClient, api_key: str, query: str, country: str, limiter: RateLimiter
 ) -> list[dict[str, str]]:
-    """One Brave web search (up to 20 results). Returns [{url, title, description}]."""
+    """One Google search through Serper, localized to a country (10 results = 1 credit).
+
+    Returns [{url, title, description}].
+    """
     await limiter.wait()
-    response = await client.get(
-        BRAVE_URL,
-        params={"q": query, "country": country.lower(), "count": 20, "safesearch": "moderate"},
-        headers={"X-Subscription-Token": api_key, "Accept": "application/json"},
+    response = await client.post(
+        SERPER_URL,
+        json={"q": query, "gl": country.lower(), "num": SERPER_RESULTS},
+        headers={"X-API-KEY": api_key, "Content-Type": "application/json"},
         timeout=30,
     )
+    if response.status_code in (400, 401, 402, 403):
+        message = response.text[:200]
+        if response.status_code != 400 or "credit" in message.lower():
+            raise SearchCreditsExhausted(f"Serper HTTP {response.status_code}: {message}")
     response.raise_for_status()
-    results = response.json().get("web", {}).get("results", [])
     return [
         {
-            "url": r.get("url", ""),
+            "url": r.get("link", ""),
             "title": r.get("title", ""),
-            "description": r.get("description", ""),
+            "description": r.get("snippet", ""),
         }
-        for r in results
-        if r.get("url")
+        for r in response.json().get("organic", [])
+        if r.get("link")
     ]

@@ -24,14 +24,14 @@ export const DISCOVERY_SOURCES: {
   },
   {
     value: "search",
-    label: "Web search (Brave)",
+    label: "Google search (Serper)",
     description:
-      "Targeted searches per country. Uses the monthly free Brave credit; results are cached for 30 days.",
+      "Targeted Google searches per country. Uses the free Serper credits (1 search = 1 credit); results are cached for 30 days.",
     free: false,
   },
 ];
 
-/** Search phrases for web-search discovery (Brave localizes results per country). */
+/** Search phrases for web-search discovery (Google results localized per country). */
 export const SEARCH_PHRASES = [
   "sports ticket agency",
   "sports travel agency",

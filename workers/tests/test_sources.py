@@ -63,3 +63,38 @@ def test_osm_place_without_website_or_email_is_skipped():
     from scrapmail_worker.sources import osm_candidate
 
     assert osm_candidate(_osm(phone="+49 30 123"), "DE") is None
+
+
+def _serper_client(status, body):
+    import httpx
+
+    def handler(request):
+        assert request.headers["X-API-KEY"] == "key"
+        assert b'"gl":"fr"' in request.content.replace(b" ", b"")
+        return httpx.Response(status, json=body)
+
+    return httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+
+def test_serper_search_returns_organic_results():
+    import asyncio
+
+    from scrapmail_worker.sources import RateLimiter, serper_search
+
+    body = {"organic": [{"link": "https://agence.fr", "title": "Agence", "snippet": "Billets"}]}
+    results = asyncio.run(
+        serper_search(_serper_client(200, body), "key", "q", "FR", RateLimiter(0))
+    )
+    assert results == [{"url": "https://agence.fr", "title": "Agence", "description": "Billets"}]
+
+
+def test_serper_without_credits_stops_searching():
+    import asyncio
+
+    import pytest
+
+    from scrapmail_worker.sources import RateLimiter, SearchCreditsExhausted, serper_search
+
+    client = _serper_client(400, {"message": "Not enough credits", "statusCode": 400})
+    with pytest.raises(SearchCreditsExhausted):
+        asyncio.run(serper_search(client, "key", "q", "FR", RateLimiter(0)))

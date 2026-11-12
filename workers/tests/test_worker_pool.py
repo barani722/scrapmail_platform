@@ -28,7 +28,7 @@ class FakeQueue:
 def test_pool_runs_one_osm_query_at_a_time_and_every_task_once(monkeypatch):
     queue = FakeQueue(["discover_osm"] * 4 + ["qualify_candidate"] * 6)
     worker = Worker.__new__(Worker)
-    worker.settings = SimpleNamespace(worker_id="t", concurrency=3, brave_api_key=None)
+    worker.settings = SimpleNamespace(worker_id="t", concurrency=3, serper_api_key=None)
     worker.stopping = asyncio.Event()
     worker.crawler = SimpleNamespace(close=lambda: asyncio.sleep(0))
     worker.db = SimpleNamespace(close=lambda: None)
