@@ -1,0 +1,65 @@
+from scrapmail_worker.extract import business_name, parse_page
+from scrapmail_worker.normalize import country_from_domain
+from scrapmail_worker.sources import make_candidate
+
+
+def test_platform_and_public_sites_are_never_candidates():
+    assert make_candidate("https://www.facebook.com/agency", "link", "x") is None
+    assert make_candidate("https://en.wikipedia.org/wiki/F1", "link", "x") is None
+    assert make_candidate("https://www.tripadvisor.co.uk/x", "link", "x") is None
+    assert make_candidate("https://www.gov.uk/visas", "link", "x") is None
+
+
+def test_candidate_uses_identity_key():
+    c = make_candidate("https://www.sportstours.co.uk/about", "search", "q")
+    assert c is not None and c.identity_key == "sportstours.co.uk"
+
+
+def test_country_from_domain():
+    assert country_from_domain("agency.co.uk") == "GB"
+    assert country_from_domain("reisen.de") == "DE"
+    assert country_from_domain("startup.io") is None
+    assert country_from_domain("agency.com") is None
+
+
+def test_external_links_and_business_name():
+    html = """<html><head><title>Elite Sports Tours | Football trips</title>
+    <meta property="og:site_name" content="Elite Sports Tours"></head><body>
+    <a href="https://partner-travel.com/">Partner</a>
+    <a href="/our-partners">Partners</a>
+    <a href="https://www.facebook.com/elite">FB</a></body></html>"""
+    page = parse_page(html, "https://elitesportstours.com/")
+    assert "partner-travel.com" in page.external_links
+    assert page.partner_links == ["https://elitesportstours.com/our-partners"]
+    assert business_name(page, "fallback") == "Elite Sports Tours"
+
+
+def _osm(**tags):
+    return {"type": "node", "id": 1, "tags": {"name": "Reisebüro Sonne", **tags}}
+
+
+def test_osm_place_with_website():
+    from scrapmail_worker.sources import osm_candidate
+
+    c = osm_candidate(_osm(website="https://www.sonne-reisen.de", shop="travel_agency"), "DE")
+    assert c and c.identity_key == "sonne-reisen.de" and c.raw["category"] == "shop=travel_agency"
+
+
+def test_osm_website_from_business_email():
+    from scrapmail_worker.sources import osm_candidate
+
+    c = osm_candidate(_osm(email="info@sonne-reisen.de"), "DE")
+    assert c and c.identity_key == "sonne-reisen.de" and c.raw["emails"] == ["info@sonne-reisen.de"]
+
+
+def test_osm_email_only_place_is_kept():
+    from scrapmail_worker.sources import osm_candidate
+
+    c = osm_candidate(_osm(email="sonne.reisen@gmail.com"), "DE")
+    assert c and c.raw["no_website"] and c.identity_key.startswith("name:reiseburo sonne|")
+
+
+def test_osm_place_without_website_or_email_is_skipped():
+    from scrapmail_worker.sources import osm_candidate
+
+    assert osm_candidate(_osm(phone="+49 30 123"), "DE") is None

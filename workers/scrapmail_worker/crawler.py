@@ -13,7 +13,7 @@ from .extract import PageData, belongs_to_site, parse_page
 from .normalize import identity_from_url
 
 MAX_BYTES = 2_000_000
-MAX_EXTRA_PAGES = 4
+MAX_EXTRA_PAGES = 5
 PAGE_DELAY_SECONDS = 1.0
 
 
@@ -25,19 +25,28 @@ class PermanentError(Exception):
         self.status = status
 
 
+MAX_SITE_TEXT = 40_000
+
+
 @dataclass
 class SiteResult:
     final_url: str
+    identity_key: str = ""
     status: str = "ok"
     pages: list[str] = field(default_factory=list)
     emails: list[str] = field(default_factory=list)
     phones: list[str] = field(default_factory=list)
     title: str | None = None
+    site_name: str | None = None
     description: str | None = None
     language: str | None = None
     country: str | None = None
     city: str | None = None
     address: str | None = None
+    text: str = ""
+    # Links to other websites found on the visited pages: {identity_key: url}
+    external_links: dict[str, str] = field(default_factory=dict)
+    home: PageData | None = None
 
 
 class Crawler:
@@ -53,6 +62,10 @@ class Crawler:
             },
             limits=httpx.Limits(max_connections=50, max_keepalive_connections=20),
         )
+
+    @property
+    def client(self) -> httpx.AsyncClient:
+        return self._client
 
     async def close(self) -> None:
         await self._client.aclose()
@@ -83,7 +96,8 @@ class Crawler:
                     break
             return str(response.url), body.decode(response.encoding or "utf-8", "replace")
 
-    async def crawl(self, url: str) -> SiteResult:
+    async def crawl(self, url: str, *, partner_pages: bool = False) -> SiteResult:
+        """Visit the homepage plus contact/about pages (and partner pages if asked)."""
         try:
             final_url, html = await self._get(url)
         except httpx.ConnectError as exc:
@@ -96,11 +110,15 @@ class Crawler:
             raise PermanentError("blocked", "Disallowed by robots.txt")
 
         site = identity_from_url(final_url) or identity_from_url(url) or ""
-        result = SiteResult(final_url=final_url, pages=[final_url])
+        result = SiteResult(final_url=final_url, identity_key=site, pages=[final_url])
         home = parse_page(html, final_url)
+        result.home = home
         self._merge(result, home)
 
-        for link in home.contact_links[:MAX_EXTRA_PAGES]:
+        extra = home.contact_links[:MAX_EXTRA_PAGES]
+        if partner_pages:
+            extra += home.partner_links[:3]
+        for link in extra:
             if not robots.can_fetch(self._user_agent, link):
                 continue
             await asyncio.sleep(PAGE_DELAY_SECONDS)
@@ -122,6 +140,10 @@ class Crawler:
         for phone in page.phones:
             if phone not in result.phones:
                 result.phones.append(phone)
-        for attr in ("title", "description", "language", "country", "city", "address"):
+        for attr in ("title", "site_name", "description", "language", "country", "city", "address"):
             if not getattr(result, attr) and getattr(page, attr):
                 setattr(result, attr, getattr(page, attr))
+        if len(result.text) < MAX_SITE_TEXT:
+            result.text = f"{result.text} {page.text}"[:MAX_SITE_TEXT]
+        for key, link in page.external_links.items():
+            result.external_links.setdefault(key, link)

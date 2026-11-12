@@ -289,6 +289,45 @@ def country_code(raw: str | None) -> str | None:
     return _COUNTRIES.get(key)
 
 
+# Country-code domains used as generic names (".io", ".co", ".tv", …): no country.
+_GENERIC_CC_TLDS = {
+    "io",
+    "co",
+    "tv",
+    "me",
+    "ai",
+    "fm",
+    "am",
+    "ly",
+    "to",
+    "cc",
+    "ws",
+    "gg",
+    "vc",
+    "la",
+    "nu",
+    "tk",
+    "ag",
+    "sh",
+    "ac",
+    "eu",
+    "app",
+    "dev",
+}
+
+
+def country_from_domain(identity_key: str | None) -> str | None:
+    """ISO country code from a country-code domain ("abc.co.uk" -> "GB", "x.de" -> "DE")."""
+    if not identity_key:
+        return None
+    tld = identity_key.split("/")[0].rsplit(".", 1)[-1].lower()
+    if tld == "uk":
+        return "GB"
+    if len(tld) == 2 and tld.isalpha() and tld not in _GENERIC_CC_TLDS:
+        return tld.upper()
+    return None
+
+
 def clean_text(raw: str | None, limit: int = 2000) -> str | None:
     """Single-line text without embedded email addresses; None if empty."""
     text = EMAIL_RE.sub("", str(raw or ""))

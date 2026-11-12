@@ -42,3 +42,11 @@ def test_third_party_emails_are_dropped():
     assert belongs_to_site("info@sportstours.fr", "sportstours.fr")
     assert belongs_to_site("agency@gmail.com", "sportstours.fr")
     assert not belongs_to_site("support@plumrocket.com", "sportstours.fr")
+
+
+def test_written_out_emails_are_found():
+    from scrapmail_worker.extract import deobfuscated_emails
+
+    assert deobfuscated_emails("Mail: info [at] agency [dot] com") == ["info@agency.com"]
+    assert deobfuscated_emails("kontakt(at)reisen.de") == ["kontakt@reisen.de"]
+    assert deobfuscated_emails("we meet at the stadium") == []

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 
 import { TableFrame } from "@/components/app/data-table";
 import {
@@ -11,12 +12,16 @@ import { EmptyState, PageHeader } from "@/components/app/page-header";
 import { requireWorkspace } from "@/lib/auth/workspace";
 import { createClient } from "@/lib/supabase/server";
 
-import { CancelJobButton, NewJobForm } from "./job-controls";
+import { CancelJobButton, DiscoveryForm, NewJobForm } from "./job-controls";
 
 export const metadata: Metadata = { title: "Scraping Jobs" };
 
+/** Must match BRAVE_MONTHLY_LIMIT in workers/.env (the worker enforces it). */
+const SEARCH_MONTHLY_LIMIT = 950;
+
 type Job = {
   id: string;
+  kind: "enrich_websites" | "discover";
   title: string;
   status: JobStatus;
   total_tasks: number;
@@ -25,24 +30,58 @@ type Job = {
   created_at: string;
 };
 
+type Stats = {
+  job_id: string;
+  accepted: number;
+  rejected: number;
+  pending: number;
+};
+
 export default async function ScrapingJobsPage() {
   const { workspaceId } = await requireWorkspace();
   const supabase = await createClient();
-  const { data: jobs } = await supabase
-    .from("scrape_jobs")
-    .select(
-      "id, title, status, total_tasks, done_tasks, failed_tasks, created_at",
-    )
-    .eq("workspace_id", workspaceId)
-    .order("created_at", { ascending: false })
-    .limit(50)
-    .returns<Job[]>();
+  const month = new Date().toISOString().slice(0, 7) + "-01";
+
+  const [{ data: jobs }, { data: usage }, { count: linkSites }] =
+    await Promise.all([
+      supabase
+        .from("scrape_jobs")
+        .select(
+          "id, kind, title, status, total_tasks, done_tasks, failed_tasks, created_at",
+        )
+        .eq("workspace_id", workspaceId)
+        .order("created_at", { ascending: false })
+        .limit(50)
+        .returns<Job[]>(),
+      supabase
+        .from("search_usage")
+        .select("used")
+        .eq("provider", "brave")
+        .eq("month", month)
+        .maybeSingle<{ used: number }>(),
+      supabase
+        .from("agencies")
+        .select("id", { count: "exact", head: true })
+        .eq("workspace_id", workspaceId)
+        .not("website_url", "is", null)
+        .or("website_status.is.null,website_status.eq.ok"),
+    ]);
+
+  const discoverIds = (jobs ?? [])
+    .filter((j) => j.kind === "discover")
+    .map((j) => j.id);
+  const statsResult = discoverIds.length
+    ? await supabase.rpc("discovery_job_stats", { p_job_ids: discoverIds })
+    : { data: [] };
+  const stats = new Map(
+    ((statsResult.data ?? []) as Stats[]).map((s) => [s.job_id, s]),
+  );
 
   return (
     <>
       <PageHeader
         title="Scraping Jobs"
-        description="Visit agency websites to collect emails, phone numbers and business details."
+        description="Find new agencies and collect emails, phone numbers and business details from their websites."
         actions={
           <LiveRefresh
             tables={["scrape_jobs"]}
@@ -52,12 +91,26 @@ export default async function ScrapingJobsPage() {
         }
       />
 
-      <section className="mb-8 rounded-xl border bg-card p-6 shadow-sm">
-        <h2 className="text-lg font-bold">New website enrichment job</h2>
+      <section className="mb-6 rounded-xl border bg-card p-6 shadow-sm">
+        <h2 className="text-lg font-bold">Find new agencies</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          The worker visits each agency website (homepage and contact/about
-          pages), respects robots.txt, and only fills empty fields. Imported
-          data is never overwritten.
+          Every website found is checked against your database (no duplicates),
+          visited, and rated for relevance. Only travel, event and ticketing
+          businesses are added.
+        </p>
+        <DiscoveryForm
+          searchUsed={usage?.used ?? 0}
+          searchLimit={SEARCH_MONTHLY_LIMIT}
+          linkSites={linkSites ?? 0}
+        />
+      </section>
+
+      <section className="mb-8 rounded-xl border bg-card p-6 shadow-sm">
+        <h2 className="text-lg font-bold">Update existing agencies</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Visits each agency website (homepage and contact/about pages),
+          respects robots.txt, fills empty fields and updates the relevance
+          rating. Imported data is never overwritten.
         </p>
         <NewJobForm />
       </section>
@@ -65,7 +118,7 @@ export default async function ScrapingJobsPage() {
       {!jobs?.length ? (
         <EmptyState
           title="No scraping jobs yet"
-          text="Start your first enrichment job above."
+          text="Start your first job above."
         />
       ) : (
         <TableFrame>
@@ -83,12 +136,31 @@ export default async function ScrapingJobsPage() {
               {jobs.map((job) => {
                 const active =
                   job.status === "queued" || job.status === "running";
+                const s = stats.get(job.id);
                 return (
                   <tr
                     key={job.id}
                     className="animate-in transition-colors fade-in hover:bg-muted/50"
                   >
-                    <td className="px-5 py-4 font-medium">{job.title}</td>
+                    <td className="px-5 py-4">
+                      <div className="font-medium">{job.title}</div>
+                      {job.kind === "discover" && (
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          <Link
+                            href="/agencies?sort=added.desc"
+                            className="font-medium text-success hover:underline"
+                          >
+                            {Number(s?.accepted ?? 0).toLocaleString()} new
+                            agencies
+                          </Link>
+                          {" · "}
+                          {Number(s?.rejected ?? 0).toLocaleString()} not
+                          relevant / unreachable
+                          {Number(s?.pending ?? 0) > 0 &&
+                            ` · ${Number(s?.pending).toLocaleString()} being checked`}
+                        </div>
+                      )}
+                    </td>
                     <td className="px-5 py-4">
                       <JobStatusBadge status={job.status} />
                     </td>

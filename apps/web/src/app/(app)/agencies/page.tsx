@@ -14,7 +14,8 @@ import { LiveRefresh } from "@/components/app/live-refresh";
 import { EmptyState, PageHeader } from "@/components/app/page-header";
 import { StatusBadge } from "@/components/app/status-badge";
 import { Button } from "@/components/ui/button";
-import { parseFilters, queryAgencies } from "@/lib/agencies";
+import { RelevanceBadge } from "@/components/app/relevance-badge";
+import { hasFilters, parseFilters, queryAgencies } from "@/lib/agencies";
 import { countryName } from "@/lib/countries";
 import { requireWorkspace } from "@/lib/auth/workspace";
 import { createClient } from "@/lib/supabase/server";
@@ -23,6 +24,13 @@ export const metadata: Metadata = { title: "Agencies" };
 
 type Props = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
+};
+
+const ORIGIN_LABEL: Record<string, string> = {
+  osm: "via OpenStreetMap",
+  link: "via agency link",
+  search: "via web search",
+  manual: "added manually",
 };
 
 const WEBSITE_STATUS: Record<
@@ -56,9 +64,7 @@ export default async function AgenciesPage({ searchParams }: Props) {
   }[];
 
   const total = count ?? 0;
-  const filtered = Boolean(
-    filters.q || filters.country || filters.email || filters.status,
-  );
+  const filtered = hasFilters(filters);
   const exportQuery = new URLSearchParams(
     Object.entries(params).flatMap(([k, v]) =>
       k !== "page" && typeof v === "string" && v ? [[k, v]] : [],
@@ -100,6 +106,31 @@ export default async function AgenciesPage({ searchParams }: Props) {
               .map((c) => [c.country_code as string, Number(c.total)]),
           )}
           unknown={Number(countries.find((c) => !c.country_code)?.total ?? 0)}
+        />
+        <FilterSelect
+          param="relevance"
+          label="Relevance"
+          options={[
+            { value: "", label: "Any relevance" },
+            { value: "abc", label: "Relevant (A–C)" },
+            { value: "A", label: "A · Tickets & hospitality" },
+            { value: "B", label: "B · Sports & event travel" },
+            { value: "C", label: "C · Travel & concierge" },
+            { value: "D", label: "D · Weak match" },
+            { value: "E", label: "E · No match" },
+            { value: "unrated", label: "Not rated yet" },
+          ]}
+        />
+        <FilterSelect
+          param="origin"
+          label="Origin"
+          options={[
+            { value: "", label: "Any origin" },
+            { value: "import", label: "Client import" },
+            { value: "osm", label: "OpenStreetMap" },
+            { value: "link", label: "Link on agency website" },
+            { value: "search", label: "Web search" },
+          ]}
         />
         <FilterSelect
           param="email"
@@ -153,6 +184,11 @@ export default async function AgenciesPage({ searchParams }: Props) {
                     Country
                   </SortHeader>
                 </th>
+                <th className="px-4 py-3">
+                  <SortHeader field="relevance" current={filters.sort}>
+                    Relevance
+                  </SortHeader>
+                </th>
                 <th className="px-4 py-3 font-medium">Services</th>
                 <th className="px-4 py-3 font-medium">Emails</th>
                 <th className="px-4 py-3">
@@ -190,6 +226,17 @@ export default async function AgenciesPage({ searchParams }: Props) {
                     </td>
                     <td className="px-4 py-3">
                       {countryName(a.country_code) ?? a.country_name ?? "—"}
+                    </td>
+                    <td className="px-4 py-3">
+                      <RelevanceBadge
+                        level={a.relevance}
+                        keywords={a.relevance_keywords}
+                      />
+                      {a.origin !== "import" && (
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          {ORIGIN_LABEL[a.origin] ?? a.origin}
+                        </div>
+                      )}
                     </td>
                     <td className="max-w-sm px-4 py-3 text-muted-foreground">
                       <span className="line-clamp-2">

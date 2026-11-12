@@ -8,16 +8,22 @@ const DEFAULT_PAGE_SIZE = 50;
 export const AGENCY_SORT_FIELDS = {
   name: "name",
   country: "country_code",
+  relevance: "relevance",
   checked: "last_checked_at",
   added: "created_at",
 } as const;
 export type AgencySortField = keyof typeof AGENCY_SORT_FIELDS;
+
+const RELEVANCE_FILTERS = ["A", "B", "C", "D", "E", "abc", "unrated"] as const;
+const ORIGINS = ["import", "osm", "link", "search", "manual"] as const;
 
 export type AgencyFilters = {
   q: string;
   country: string;
   email: "with" | "without" | "";
   status: "" | "ok" | "blocked" | "dead" | "unchecked";
+  relevance: "" | (typeof RELEVANCE_FILTERS)[number];
+  origin: "" | (typeof ORIGINS)[number];
   page: number;
   size: number;
   sort: { field: AgencySortField; dir: "asc" | "desc" };
@@ -34,10 +40,17 @@ export type AgencyRow = {
   phone: string | null;
   website_status: string | null;
   last_checked_at: string | null;
+  relevance: "A" | "B" | "C" | "D" | "E" | null;
+  relevance_keywords: string[];
+  origin: string;
   agency_contacts: { email: string | null }[];
 };
 
 type Params = Record<string, string | string[] | undefined>;
+
+function oneOf<T extends string>(value: string, allowed: readonly T[]): T | "" {
+  return (allowed as readonly string[]).includes(value) ? (value as T) : "";
+}
 
 export function parseFilters(params: Params): AgencyFilters {
   const value = (key: string) => {
@@ -46,15 +59,18 @@ export function parseFilters(params: Params): AgencyFilters {
   };
   const size = Number.parseInt(value("size"), 10);
   const [sortField, sortDir] = value("sort").split(".");
-  const email = value("email");
-  const status = value("status");
   return {
     q: value("q").slice(0, 100),
     country: /^[A-Z]{2}$|^none$/.test(value("country")) ? value("country") : "",
-    email: email === "with" || email === "without" ? email : "",
-    status: ["ok", "blocked", "dead", "unchecked"].includes(status)
-      ? (status as AgencyFilters["status"])
-      : "",
+    email: oneOf(value("email"), ["with", "without"] as const),
+    status: oneOf(value("status"), [
+      "ok",
+      "blocked",
+      "dead",
+      "unchecked",
+    ] as const),
+    relevance: oneOf(value("relevance"), RELEVANCE_FILTERS),
+    origin: oneOf(value("origin"), ORIGINS),
     page: Math.max(1, Number.parseInt(value("page") || "1", 10) || 1),
     size: (PAGE_SIZES as readonly number[]).includes(size)
       ? size
@@ -67,6 +83,17 @@ export function parseFilters(params: Params): AgencyFilters {
       dir: sortDir === "desc" ? "desc" : "asc",
     },
   };
+}
+
+export function hasFilters(filters: AgencyFilters) {
+  return Boolean(
+    filters.q ||
+    filters.country ||
+    filters.email ||
+    filters.status ||
+    filters.relevance ||
+    filters.origin,
+  );
 }
 
 /** Agency query with filters applied (RLS limits results to the workspace). */
@@ -83,7 +110,7 @@ export async function queryAgencies(
   let query = supabase
     .from("agencies")
     .select(
-      `id, name, identity_key, website_url, country_code, country_name, description, phone, website_status, last_checked_at, ${contacts}`,
+      `id, name, identity_key, website_url, country_code, country_name, description, phone, website_status, last_checked_at, relevance, relevance_keywords, origin, ${contacts}`,
       { count: "exact" },
     )
     .eq("workspace_id", workspaceId);
@@ -109,6 +136,13 @@ export async function queryAgencies(
     query = query.in("website_status", ["unreachable", "not_found", "error"]);
   else if (filters.status === "unchecked")
     query = query.is("last_checked_at", null);
+
+  if (filters.relevance === "abc")
+    query = query.in("relevance", ["A", "B", "C"]);
+  else if (filters.relevance === "unrated") query = query.is("relevance", null);
+  else if (filters.relevance) query = query.eq("relevance", filters.relevance);
+
+  if (filters.origin) query = query.eq("origin", filters.origin);
 
   const column = AGENCY_SORT_FIELDS[filters.sort.field];
   return query

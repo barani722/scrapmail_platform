@@ -4,11 +4,20 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { LiveRefresh } from "@/components/app/live-refresh";
+import { RelevanceBadge } from "@/components/app/relevance-badge";
 import { countryName } from "@/lib/countries";
 import { requireWorkspace } from "@/lib/auth/workspace";
 import { createClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = { title: "Agency" };
+
+const ORIGIN: Record<string, string> = {
+  import: "Client import",
+  osm: "OpenStreetMap",
+  link: "Link on an agency website",
+  search: "Web search",
+  manual: "Added manually",
+};
 
 type Agency = {
   id: string;
@@ -24,6 +33,9 @@ type Agency = {
   phone: string | null;
   description: string | null;
   last_checked_at: string | null;
+  relevance: string | null;
+  relevance_keywords: string[];
+  origin: string;
   created_at: string;
   agency_contacts: {
     id: string;
@@ -63,7 +75,7 @@ export default async function AgencyPage({
   const { data: agency } = await supabase
     .from("agencies")
     .select(
-      "id, name, identity_key, website_url, website_title, website_status, country_code, country_name, city, address, phone, description, last_checked_at, created_at, agency_contacts(id, email, full_name, job_title, is_role_address, source), agency_sources(id, source_type, source_name, source_ref, observed_at)",
+      "id, name, identity_key, website_url, website_title, website_status, country_code, country_name, city, address, phone, description, last_checked_at, created_at, relevance, relevance_keywords, origin, agency_contacts(id, email, full_name, job_title, is_role_address, source), agency_sources(id, source_type, source_name, source_ref, observed_at)",
     )
     .eq("id", id)
     .maybeSingle<Agency>();
@@ -71,6 +83,7 @@ export default async function AgencyPage({
 
   const facts: [string, string | null][] = [
     ["Domain", agency.identity_key],
+    ["Origin", ORIGIN[agency.origin] ?? agency.origin],
     ["Country", countryName(agency.country_code) ?? agency.country_name],
     ["City", agency.city],
     ["Address", agency.address],
@@ -120,6 +133,21 @@ export default async function AgencyPage({
       <div className="grid gap-6 lg:grid-cols-3">
         <section className="rounded-xl border bg-card p-6 shadow-sm">
           <h2 className="mb-4 text-lg font-bold">Details</h2>
+          <div className="mb-5 rounded-lg bg-muted px-4 py-3">
+            <p className="text-xs text-muted-foreground">Relevance</p>
+            <div className="mt-1">
+              <RelevanceBadge
+                level={agency.relevance}
+                keywords={agency.relevance_keywords}
+                showLabel
+              />
+            </div>
+            {agency.relevance_keywords.length > 0 && (
+              <p className="mt-2 text-xs text-muted-foreground">
+                Matched: {agency.relevance_keywords.join(", ")}
+              </p>
+            )}
+          </div>
           <dl className="space-y-3 text-sm">
             {facts.map(([label, value]) => (
               <div key={label}>
