@@ -148,6 +148,32 @@
   body {
     @apply bg-background text-foreground;
   }
+  /* Everything that can be clicked shows the hand cursor (Tailwind 4 resets it). */
+  button,
+  [role="button"],
+  [role="checkbox"],
+  [role="combobox"],
+  [role="menuitem"],
+  [role="option"],
+  [role="radio"],
+  [role="switch"],
+  [role="tab"],
+  [type="button"],
+  [type="checkbox"],
+  [type="radio"],
+  [type="reset"],
+  [type="submit"],
+  input[type="file"]::file-selector-button,
+  label[for],
+  select,
+  summary {
+    cursor: pointer;
+  }
+  :disabled,
+  [aria-disabled="true"],
+  [data-disabled] {
+    cursor: not-allowed;
+  }
 }
 
 /* Respect users who prefer less motion. */

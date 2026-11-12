@@ -190,15 +190,8 @@ export default async function ContactsPage({ searchParams }: Props) {
               </tr>
             </thead>
             <tbody className="divide-y">
-              {contacts.map((c, i) => (
-                <tr
-                  key={c.id}
-                  className="animate-in transition-colors fade-in hover:bg-muted/50"
-                  style={{
-                    animationDelay: `${Math.min(i, 20) * 15}ms`,
-                    animationFillMode: "both",
-                  }}
-                >
+              {contacts.map((c) => (
+                <tr key={c.id} className="transition-colors hover:bg-muted/50">
                   <td className="px-4 py-3">
                     {c.email}
                     {c.is_role_address && (

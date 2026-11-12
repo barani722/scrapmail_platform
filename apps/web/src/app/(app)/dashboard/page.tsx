@@ -25,34 +25,24 @@ type Job = {
   failed_tasks: number;
 };
 
+type Counts = {
+  agencies: number;
+  contacts: number;
+  active_jobs: number;
+  pending_users: number;
+};
+
 export default async function DashboardPage() {
   const { profile, workspaceId } = await requireWorkspace();
   const isAdmin = profile.platform_role === "admin";
   const firstName = (profile.full_name || profile.email).split(" ")[0];
   const supabase = await createClient();
 
-  const head = { count: "exact" as const, head: true };
-  const [agencies, contacts, activeJobs, pending, recent] = await Promise.all([
+  // All four numbers come from one database call.
+  const [{ data: counts }, recent] = await Promise.all([
     supabase
-      .from("agencies")
-      .select("id", head)
-      .eq("workspace_id", workspaceId),
-    supabase
-      .from("agency_contacts")
-      .select("id", head)
-      .eq("workspace_id", workspaceId)
-      .or("email_status.is.null,email_status.eq.valid"),
-    supabase
-      .from("scrape_jobs")
-      .select("id", head)
-      .eq("workspace_id", workspaceId)
-      .in("status", ["queued", "running"]),
-    isAdmin
-      ? supabase
-          .from("profiles")
-          .select("user_id", head)
-          .eq("status", "pending")
-      : Promise.resolve({ count: 0 }),
+      .rpc("dashboard_counts", { p_workspace_id: workspaceId })
+      .maybeSingle<Counts>(),
     supabase
       .from("scrape_jobs")
       .select("id, title, status, total_tasks, done_tasks, failed_tasks")
@@ -61,6 +51,7 @@ export default async function DashboardPage() {
       .limit(5)
       .returns<Job[]>(),
   ]);
+  const number = (n: number | string | null | undefined) => Number(n ?? 0);
 
   return (
     <>
@@ -84,26 +75,26 @@ export default async function DashboardPage() {
         <StatCard
           icon={Building2}
           label="Total Agencies"
-          value={agencies.count}
+          value={number(counts?.agencies)}
           href="/agencies"
         />
         <StatCard
           icon={Mail}
           label="Email Contacts"
-          value={contacts.count}
+          value={number(counts?.contacts)}
           href="/contacts"
         />
         <StatCard
           icon={Layers}
           label="Active Scraping Jobs"
-          value={activeJobs.count}
+          value={number(counts?.active_jobs)}
           href="/scraping-jobs"
         />
         {isAdmin && (
           <StatCard
             icon={ShieldCheck}
             label="Pending Approvals"
-            value={pending.count}
+            value={number(counts?.pending_users)}
             href="/admin/users"
           />
         )}
