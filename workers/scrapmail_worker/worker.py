@@ -40,6 +40,7 @@ from .sources import (
     Candidate,
     RateLimiter,
     SearchCreditsExhausted,
+    is_platform,
     make_candidate,
     osm_travel_agencies,
     serper_search,
@@ -408,6 +409,11 @@ class Worker:
 
         # Redirected to a website we already have?
         redirected = site.identity_key and site.identity_key != cand["identity_key"]
+        if redirected and is_platform(site.identity_key.split("/")[0]):
+            # Expired site sent to a portal/webmail/maps: its content is not the agency's.
+            if cand["source"] == "osm" and raw.get("emails"):
+                return await self._accept(cand, None, website_status="error")
+            return await self._reject(cand, f"website redirects to {site.identity_key}")
         if redirected and await self._existing_agencies(workspace_id, [site.identity_key]):
             return await self._reject(cand, f"duplicate of {site.identity_key}")
 

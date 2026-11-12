@@ -98,3 +98,25 @@ def test_serper_without_credits_stops_searching():
     client = _serper_client(400, {"message": "Not enough credits", "statusCode": 400})
     with pytest.raises(SearchCreditsExhausted):
         asyncio.run(serper_search(client, "key", "q", "FR", RateLimiter(0)))
+
+
+def test_free_mail_domains_are_never_websites():
+    from scrapmail_worker.normalize import is_free_email_domain
+    from scrapmail_worker.sources import osm_candidate
+
+    for domain in ("mail.ru", "bk.ru", "ukr.net", "wp.pl", "mail.example.am", "rediffmail.com"):
+        assert is_free_email_domain(domain), domain
+    assert not is_free_email_domain("sonne-reisen.de")
+    # A mail.ru address gives an email-only agency, not the website mail.ru.
+    c = osm_candidate(_osm(email="yama.tour@mail.ru"), "AM")
+    assert c and c.raw["no_website"] and c.identity_key.startswith("name:")
+    assert make_candidate("https://maps.app.goo.gl/x", "osm", "r") is None
+    assert make_candidate("https://bk.ru", "osm", "r") is None
+
+
+def test_email_only_place_with_non_latin_name_is_kept():
+    from scrapmail_worker.sources import osm_candidate
+
+    element = {"type": "node", "id": 2, "tags": {"name": "Յամա Տուր", "email": "x@mail.ru"}}
+    c = osm_candidate(element, "AM")
+    assert c and c.identity_key == "name:յամա տուր|x@mail.ru"

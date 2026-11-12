@@ -13,11 +13,11 @@ from typing import Any
 import httpx
 
 from .normalize import (
-    FREE_EMAIL_DOMAINS,
     clean_name,
     email_domain,
     extract_emails,
     identity_from_url,
+    is_free_email_domain,
     normalize_name,
     normalize_url,
 )
@@ -89,6 +89,22 @@ NOT_AGENCIES = {
     "vimeo.com",
     "spotify.com",
     "maps.google.com",
+    # Link shorteners, messengers and portals (never the agency's own website).
+    "goo.gl",
+    "bit.ly",
+    "tinyurl.com",
+    "ow.ly",
+    "t.co",
+    "wa.me",
+    "telegram.me",
+    "line.me",
+    "vk.com",
+    "ok.ru",
+    "yandex.ru",
+    "mail.ru",
+    "google.ru",
+    "google.co.uk",
+    "sites.google.com",
 }
 
 
@@ -103,6 +119,15 @@ class Candidate:
     raw: dict[str, Any] = field(default_factory=dict)
 
 
+def is_platform(domain: str) -> bool:
+    """Website that is never an agency's own (platform, portal, mail service)."""
+    return (
+        domain in NOT_AGENCIES
+        or any(domain.endswith("." + d) for d in NOT_AGENCIES)
+        or is_free_email_domain(domain)
+    )
+
+
 def make_candidate(url: str | None, source: str, source_ref: str, **extra: Any) -> Candidate | None:
     """Normalized candidate, or None for unusable / never-agency websites."""
     normalized = normalize_url(url)
@@ -110,7 +135,7 @@ def make_candidate(url: str | None, source: str, source_ref: str, **extra: Any) 
     if not normalized or not key:
         return None
     base = key.split("/")[0]
-    if base in NOT_AGENCIES or any(base.endswith("." + d) for d in NOT_AGENCIES):
+    if is_platform(base):
         return None
     if base.endswith((".gov", ".gov.uk", ".edu", ".ac.uk", ".mil")):
         return None
@@ -224,7 +249,7 @@ def osm_candidate(element: dict[str, Any], country: str) -> Candidate | None:
         "postcode": tags.get("addr:postcode"),
     }
     website = tags.get("website") or tags.get("contact:website") or tags.get("url")
-    business_emails = [e for e in emails if email_domain(e) not in FREE_EMAIL_DOMAINS]
+    business_emails = [e for e in emails if not is_free_email_domain(email_domain(e))]
     if not website and business_emails:
         website = f"https://{email_domain(business_emails[0])}"
     candidate = make_candidate(
@@ -232,12 +257,13 @@ def osm_candidate(element: dict[str, Any], country: str) -> Candidate | None:
     )
     if candidate:
         return candidate
-    if emails and normalize_name(name):
+    name_key = normalize_name(name) or " ".join(name.lower().split())  # non-Latin names
+    if emails and name_key:
         # Email-only place (free-mail address, or a social page as "website").
         # Name + email keeps agencies with generic names ("Reisebüro") apart.
         return Candidate(
             url=f"https://www.openstreetmap.org/{element.get('type')}/{element.get('id')}",
-            identity_key=f"name:{normalize_name(name)}|{emails[0]}",
+            identity_key=f"name:{name_key}|{emails[0]}",
             source="osm",
             source_ref=ref,
             name=name,

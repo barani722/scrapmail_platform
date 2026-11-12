@@ -10,11 +10,11 @@ from urllib.parse import urljoin, urlsplit
 from bs4 import BeautifulSoup
 
 from .normalize import (
-    FREE_EMAIL_DOMAINS,
     clean_text,
     email_domain,
     extract_emails,
     identity_from_url,
+    is_free_email_domain,
 )
 
 # Link text / URL fragments that usually lead to contact details (multilingual).
@@ -212,5 +212,5 @@ def belongs_to_site(email: str, site_identity: str) -> bool:
         domain == site_domain
         or domain.endswith("." + site_domain)
         or site_domain.endswith("." + domain)
-        or domain in FREE_EMAIL_DOMAINS
+        or is_free_email_domain(domain)
     )
