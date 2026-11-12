@@ -221,7 +221,7 @@ export default async function AgenciesPage({ searchParams }: Props) {
               </tr>
             </thead>
             <tbody className="divide-y">
-              {agencies.map((a, i) => {
+              {agencies.map((a) => {
                 const emails = a.agency_contacts.filter((c) => c.email);
                 const status = a.website_status
                   ? WEBSITE_STATUS[a.website_status]
@@ -229,11 +229,7 @@ export default async function AgenciesPage({ searchParams }: Props) {
                 return (
                   <tr
                     key={a.id}
-                    className="animate-in align-top transition-colors fade-in hover:bg-muted/50"
-                    style={{
-                      animationDelay: `${Math.min(i, 20) * 15}ms`,
-                      animationFillMode: "both",
-                    }}
+                    className="align-top transition-colors hover:bg-muted/50"
                   >
                     <td className="px-4 py-3">
                       <Link

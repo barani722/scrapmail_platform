@@ -34,7 +34,8 @@ export async function signIn(
   cookieStore.set(REMEMBER_COOKIE, parsed.data.remember ? "1" : "0", {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    // Secure cookies only work over https (the site may also run on plain http).
+    secure: clientEnv.NEXT_PUBLIC_APP_URL.startsWith("https://"),
     path: "/",
     ...(parsed.data.remember ? { maxAge: 60 * 60 * 24 * 365 } : {}),
   });

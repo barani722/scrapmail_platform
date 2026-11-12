@@ -1,5 +1,5 @@
 import path from "node:path";
-import { withSentryConfig } from "@sentry/nextjs";
+import { withSentryConfig } from "@sentry/nextjs/config";
 import type { NextConfig } from "next";
 
 // Extra hosts allowed to open the *dev* server (e.g. this machine's public IP),
@@ -18,6 +18,13 @@ const nextConfig: NextConfig = {
   // Monorepo: the pnpm workspace root is two levels up.
   turbopack: {
     root: path.join(__dirname, "../.."),
+  },
+  experimental: {
+    // Going back to a page seen in the last 30 s shows it instantly from the
+    // browser's memory (live pages still refresh themselves when data changes).
+    staleTimes: { dynamic: 30 },
+    // Load only the Radix components that are used, not the whole package.
+    optimizePackageImports: ["radix-ui"],
   },
 };
 

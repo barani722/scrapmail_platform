@@ -57,6 +57,7 @@ export default async function ScrapingJobsPage() {
     { count: linkSites },
     { data: ranking },
     { data: workers },
+    { data: statsData },
   ] = await Promise.all([
     supabase
       .from("scrape_jobs")
@@ -88,17 +89,14 @@ export default async function ScrapingJobsPage() {
       .order("updated_at", { ascending: false })
       .limit(20)
       .returns<WorkerStatus[]>(),
+    supabase.rpc("recent_discovery_job_stats", {
+      p_workspace_id: workspaceId,
+    }),
   ]);
 
   const rankedCountries = (ranking ?? []) as Ranking[];
-  const discoverIds = (jobs ?? [])
-    .filter((j) => j.kind === "discover")
-    .map((j) => j.id);
-  const statsResult = discoverIds.length
-    ? await supabase.rpc("discovery_job_stats", { p_job_ids: discoverIds })
-    : { data: [] };
   const stats = new Map(
-    ((statsResult.data ?? []) as Stats[]).map((s) => [s.job_id, s]),
+    ((statsData ?? []) as Stats[]).map((s) => [s.job_id, s]),
   );
 
   return (

@@ -15,13 +15,22 @@ export type Profile = {
   platform_role: "user" | "admin";
 };
 
-/** Signed-in user's profile, or null. Cached for the duration of a request. */
-export const getCurrentProfile = cache(async (): Promise<Profile | null> => {
+/**
+ * Signed-in user's id from the session token (verified locally with the
+ * project's signing key, no network call), or null. Cached per request.
+ */
+export const getUserId = cache(async (): Promise<string | null> => {
   const supabase = await createClient();
   const { data } = await supabase.auth.getClaims();
-  const userId = data?.claims?.sub;
+  return data?.claims?.sub ?? null;
+});
+
+/** Signed-in user's profile, or null. Cached for the duration of a request. */
+export const getCurrentProfile = cache(async (): Promise<Profile | null> => {
+  const userId = await getUserId();
   if (!userId) return null;
 
+  const supabase = await createClient();
   const { data: profile } = await supabase
     .from("profiles")
     .select("user_id, email, full_name, status, platform_role")

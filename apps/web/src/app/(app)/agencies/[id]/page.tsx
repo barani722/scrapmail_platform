@@ -73,16 +73,18 @@ export default async function AgencyPage({
 }) {
   const { id } = await params;
   if (!/^[0-9a-f-]{36}$/.test(id)) notFound();
-  const { workspaceId } = await requireWorkspace();
-
   const supabase = await createClient();
-  const { data: agency } = await supabase
-    .from("agencies")
-    .select(
-      "id, name, identity_key, website_url, website_title, website_status, country_code, country_name, city, address, phone, description, last_checked_at, created_at, relevance, relevance_keywords, origin, agency_contacts(id, email, full_name, job_title, is_role_address, source, email_original, email_status, email_note), agency_sources(id, source_type, source_name, source_ref, observed_at)",
-    )
-    .eq("id", id)
-    .maybeSingle<Agency>();
+  // RLS limits the agency to the user's workspace, so both load at the same time.
+  const [{ workspaceId }, { data: agency }] = await Promise.all([
+    requireWorkspace(),
+    supabase
+      .from("agencies")
+      .select(
+        "id, name, identity_key, website_url, website_title, website_status, country_code, country_name, city, address, phone, description, last_checked_at, created_at, relevance, relevance_keywords, origin, agency_contacts(id, email, full_name, job_title, is_role_address, source, email_original, email_status, email_note), agency_sources(id, source_type, source_name, source_ref, observed_at)",
+      )
+      .eq("id", id)
+      .maybeSingle<Agency>(),
+  ]);
   if (!agency) notFound();
 
   const facts: [string, string | null][] = [
