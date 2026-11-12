@@ -113,9 +113,9 @@ export default async function AgencyPage({
         </div>
         <div className="flex items-center gap-4">
           <LiveRefresh
-            tables={["agencies", "agency_contacts"]}
+            tables={["scrape_jobs"]}
             workspaceId={workspaceId}
-            minIntervalMs={3000}
+            minIntervalMs={5000}
           />
           {agency.website_url && (
             <a

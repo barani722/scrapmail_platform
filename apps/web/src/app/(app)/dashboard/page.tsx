@@ -73,13 +73,9 @@ export default async function DashboardPage() {
           </p>
         </div>
         <LiveRefresh
-          tables={
-            isAdmin
-              ? ["agencies", "agency_contacts", "scrape_jobs", "profiles"]
-              : ["agencies", "agency_contacts", "scrape_jobs"]
-          }
+          tables={isAdmin ? ["scrape_jobs", "profiles"] : ["scrape_jobs"]}
           workspaceId={workspaceId}
-          minIntervalMs={3000}
+          minIntervalMs={5000}
         />
       </div>
 

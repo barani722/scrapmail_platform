@@ -97,7 +97,7 @@ export default async function ScrapingJobsPage() {
           <LiveRefresh
             tables={["scrape_jobs"]}
             workspaceId={workspaceId}
-            minIntervalMs={1500}
+            minIntervalMs={3000}
           />
         }
       />

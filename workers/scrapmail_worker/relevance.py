@@ -466,9 +466,21 @@ def _plain(text: str) -> str:
     return "".join(c for c in text if not unicodedata.combining(c)).lower()
 
 
-def _compile(words: list[str]) -> list[tuple[str, re.Pattern[str]]]:
+class _Keyword:
+    """Whole-word keyword. The plain substring test skips the regex for the many
+    keywords that are not in the text at all (rating stays the same, much faster)."""
+
+    def __init__(self, word: str) -> None:
+        self.plain = _plain(word)
+        self.pattern = re.compile(rf"(?<![a-z0-9]){re.escape(self.plain)}(?![a-z0-9])")
+
+    def search(self, text: str) -> bool:
+        return self.plain in text and self.pattern.search(text) is not None
+
+
+def _compile(words: list[str]) -> list[tuple[str, _Keyword]]:
     unique = dict.fromkeys(words)  # a repeated word must not count twice
-    return [(w, re.compile(rf"(?<![a-z0-9]){re.escape(_plain(w))}(?![a-z0-9])")) for w in unique]
+    return [(w, _Keyword(w)) for w in unique]
 
 
 _GROUPS = {"tickets": _compile(TICKETS), "events": _compile(EVENTS), "travel": _compile(TRAVEL)}

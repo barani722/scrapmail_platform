@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures.process import BrokenProcessPool
 from dataclasses import dataclass, field
 from urllib.parse import urlsplit
 from urllib.robotparser import RobotFileParser
@@ -50,8 +52,12 @@ class SiteResult:
 
 
 class Crawler:
-    def __init__(self, user_agent: str) -> None:
+    def __init__(
+        self, user_agent: str, max_connections: int = 50, parse_processes: int = 0
+    ) -> None:
         self._user_agent = user_agent
+        # Parsing HTML is CPU work: spread it over several processes (cores).
+        self._pool = ProcessPoolExecutor(parse_processes) if parse_processes > 1 else None
         self._client = httpx.AsyncClient(
             follow_redirects=True,
             timeout=httpx.Timeout(15.0, connect=10.0),
@@ -60,7 +66,9 @@ class Crawler:
                 "Accept": "text/html,application/xhtml+xml",
                 "Accept-Language": "en;q=1.0, *;q=0.5",
             },
-            limits=httpx.Limits(max_connections=50, max_keepalive_connections=20),
+            limits=httpx.Limits(
+                max_connections=max(50, max_connections), max_keepalive_connections=20
+            ),
         )
 
     @property
@@ -69,6 +77,18 @@ class Crawler:
 
     async def close(self) -> None:
         await self._client.aclose()
+        if self._pool:
+            self._pool.shutdown(cancel_futures=True)
+
+    async def _parse(self, html: str, url: str) -> PageData:
+        if self._pool is None:
+            return parse_page(html, url)
+        try:
+            return await asyncio.get_running_loop().run_in_executor(
+                self._pool, parse_page, html, url
+            )
+        except BrokenProcessPool:
+            return parse_page(html, url)  # a parser process died: parse here instead
 
     async def _robots(self, url: str) -> RobotFileParser:
         parts = urlsplit(url)
@@ -111,7 +131,7 @@ class Crawler:
 
         site = identity_from_url(final_url) or identity_from_url(url) or ""
         result = SiteResult(final_url=final_url, identity_key=site, pages=[final_url])
-        home = parse_page(html, final_url)
+        home = await self._parse(html, final_url)
         result.home = home
         self._merge(result, home)
 
@@ -127,7 +147,7 @@ class Crawler:
             except (httpx.HTTPError, PermanentError):
                 continue
             result.pages.append(page_url)
-            self._merge(result, parse_page(page_html, page_url))
+            self._merge(result, await self._parse(page_html, page_url))
 
         result.emails = [e for e in result.emails if belongs_to_site(e, site)]
         return result

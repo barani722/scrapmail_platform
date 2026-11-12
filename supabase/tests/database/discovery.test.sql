@@ -3,7 +3,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(13);
+select plan(14);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-0000000000e1', 'disc-a@test.local'),
@@ -103,6 +103,12 @@ select is(
   (select count(*)::int from public.search_country_ranking('00000000-0000-0000-0000-0000000000f2')),
   0,
   'other workspaces are not ranked'
+);
+select is(
+  (select array_agg(country_code || ':' || total order by country_code)
+     from public.agency_country_counts('00000000-0000-0000-0000-0000000000f1')),
+  array['DK:1', 'SE:2'],
+  'country filter counts only the own workspace'
 );
 reset role;
 

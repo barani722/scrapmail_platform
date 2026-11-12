@@ -19,7 +19,9 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import os
 import signal
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from typing import Any
 
@@ -50,6 +52,13 @@ log = logging.getLogger("scrapmail.worker")
 
 IDLE_SECONDS = 5
 LEASE_SECONDS = 600
+TASK_KINDS = [
+    "enrich_website",
+    "discover_osm",
+    "discover_links",
+    "discover_search",
+    "qualify_candidate",
+]
 MAX_LINK_CANDIDATES_PER_SITE = 40
 
 
@@ -81,7 +90,11 @@ class Worker:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
         self.db = Db(settings)
-        self.crawler = Crawler(settings.user_agent)
+        self.crawler = Crawler(
+            settings.user_agent,
+            max_connections=settings.concurrency * 2,
+            parse_processes=max(1, (os.cpu_count() or 2) - 1),
+        )
         self.stopping = asyncio.Event()
         # Shared, polite limits for external services.
         self.osm_limiter = RateLimiter(5.0)
@@ -94,6 +107,11 @@ class Worker:
         return await asyncio.to_thread(getattr(self.db, method), *args, **kwargs)
 
     async def run(self) -> None:
+        # Database calls run in threads: one per task, so no task waits for a free thread
+        # (the default pool has only cpu_count + 4 threads).
+        asyncio.get_running_loop().set_default_executor(
+            ThreadPoolExecutor(max_workers=self.settings.concurrency, thread_name_prefix="db")
+        )
         log.info(
             "worker %s started (concurrency %d, web search %s)",
             self.settings.worker_id,
@@ -108,19 +126,13 @@ class Worker:
             tasks: list[dict[str, Any]] = []
             if free > 0:
                 osm_busy = "discover_osm" in running.values()
-                try:
-                    tasks = await self._db(
-                        "rpc",
-                        "claim_scrape_tasks",
-                        {
-                            "p_worker": self.settings.worker_id,
-                            "p_limit": free,
-                            "p_lease_seconds": LEASE_SECONDS,
-                            "p_exclude_kinds": ["discover_osm"] if osm_busy else [],
-                        },
+                # Found websites are checked first, so new agencies appear right away
+                # instead of after every discovery task of a large job.
+                tasks = await self._claim(free, [k for k in TASK_KINDS if k != "qualify_candidate"])
+                if len(tasks) < free:
+                    tasks += await self._claim(
+                        free - len(tasks), ["discover_osm"] if osm_busy else []
                     )
-                except Exception:
-                    log.exception("could not claim tasks; retrying")
                 # Claimed several OpenStreetMap tasks at once: run one, release the rest.
                 osm = [t for t in tasks if t["kind"] == "discover_osm"]
                 for extra in osm[0 if osm_busy else 1 :]:
@@ -150,6 +162,25 @@ class Worker:
         await self.crawler.close()
         self.db.close()
         log.info("worker stopped")
+
+    async def _claim(self, limit: int, exclude_kinds: list[str]) -> list[dict[str, Any]]:
+        try:
+            return (
+                await self._db(
+                    "rpc",
+                    "claim_scrape_tasks",
+                    {
+                        "p_worker": self.settings.worker_id,
+                        "p_limit": limit,
+                        "p_lease_seconds": LEASE_SECONDS,
+                        "p_exclude_kinds": exclude_kinds,
+                    },
+                )
+                or []
+            )
+        except Exception:
+            log.exception("could not claim tasks; retrying")
+            return []
 
     # -- dispatch ---------------------------------------------------------------------
 

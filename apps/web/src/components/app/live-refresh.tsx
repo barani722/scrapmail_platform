@@ -1,22 +1,27 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
-type LiveTable = "agencies" | "agency_contacts" | "scrape_jobs" | "profiles";
+/**
+ * Low-volume tables only. Scraper activity shows up as job progress
+ * (scrape_jobs), so pages listen to that instead of every new agency row.
+ */
+type LiveTable = "scrape_jobs" | "profiles";
 
 /**
  * Keeps the page in sync for every user: listens to database changes
  * (Supabase Realtime, filtered by RLS) and re-renders the page with fresh data.
- * Refreshes are throttled so a busy scraper does not flood the browser.
+ * At most one refresh runs at a time, at most one per `minIntervalMs`, and none
+ * while the tab is hidden (it catches up when the tab is shown again).
  */
 export function LiveRefresh({
   tables,
   workspaceId,
-  minIntervalMs = 2000,
+  minIntervalMs = 5000,
   className,
 }: {
   tables: LiveTable[];
@@ -26,23 +31,43 @@ export function LiveRefresh({
 }) {
   const router = useRouter();
   const [connected, setConnected] = useState(false);
+  const [refreshing, startRefresh] = useTransition();
+  const refreshingRef = useRef(false);
   const lastRefresh = useRef(0);
+  const dirty = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const key = tables.join(",");
 
   useEffect(() => {
+    refreshingRef.current = refreshing;
+  }, [refreshing]);
+
+  useEffect(() => {
     const supabase = createClient();
-    const schedule = () => {
+    lastRefresh.current = Date.now(); // the page was just rendered with fresh data
+
+    const schedule = (wait: number) => {
       if (timer.current) return;
-      const wait = Math.max(
-        0,
-        lastRefresh.current + minIntervalMs - Date.now(),
-      );
-      timer.current = setTimeout(() => {
-        timer.current = null;
-        lastRefresh.current = Date.now();
-        router.refresh();
-      }, wait);
+      timer.current = setTimeout(run, Math.max(0, wait));
+    };
+    const run = () => {
+      timer.current = null;
+      if (!dirty.current || document.hidden) return;
+      if (refreshingRef.current) {
+        // The previous refresh is still loading: try again later.
+        schedule(minIntervalMs);
+        return;
+      }
+      dirty.current = false;
+      lastRefresh.current = Date.now();
+      startRefresh(() => router.refresh());
+    };
+    const onChange = () => {
+      dirty.current = true;
+      schedule(lastRefresh.current + minIntervalMs - Date.now());
+    };
+    const onVisible = () => {
+      if (!document.hidden && dirty.current) schedule(0);
     };
 
     const channel = supabase.channel(
@@ -59,12 +84,14 @@ export function LiveRefresh({
             ? { filter: `workspace_id=eq.${workspaceId}` }
             : {}),
         },
-        schedule,
+        onChange,
       );
     }
     channel.subscribe((status) => setConnected(status === "SUBSCRIBED"));
+    document.addEventListener("visibilitychange", onVisible);
 
     return () => {
+      document.removeEventListener("visibilitychange", onVisible);
       if (timer.current) clearTimeout(timer.current);
       timer.current = null;
       void supabase.removeChannel(channel);
