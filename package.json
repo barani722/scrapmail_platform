@@ -16,6 +16,7 @@
     "format:check": "prettier --check .",
     "worker": "cd workers && uv run python -m scrapmail_worker.supervisor",
     "worker:single": "cd workers && uv run python -m scrapmail_worker.worker",
+    "emails:check": "cd workers && uv run python -m scrapmail_worker.check_contacts",
     "import:client": "cd workers && uv run python -m scrapmail_worker.importer --workspace scrapmail ../docs"
   },
   "devDependencies": {

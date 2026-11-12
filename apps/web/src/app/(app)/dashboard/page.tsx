@@ -40,7 +40,8 @@ export default async function DashboardPage() {
     supabase
       .from("agency_contacts")
       .select("id", head)
-      .eq("workspace_id", workspaceId),
+      .eq("workspace_id", workspaceId)
+      .or("email_status.is.null,email_status.eq.valid"),
     supabase
       .from("scrape_jobs")
       .select("id", head)

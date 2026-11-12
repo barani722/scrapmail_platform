@@ -24,7 +24,33 @@ type Contact = {
   job_title: string | null;
   is_role_address: boolean;
   source: string;
+  email_original: string | null;
+  email_status: EmailStatus | null;
+  email_note: string | null;
   agencies: { id: string; name: string; country_code: string | null } | null;
+};
+
+type EmailStatus =
+  "valid" | "unverified" | "no_mail_server" | "invalid" | "duplicate";
+
+/** Email status filter: usable addresses by default, problems on request. */
+const STATUS_VIEWS: Record<string, EmailStatus[] | null> = {
+  "": ["valid"], // plus not yet checked (new imports)
+  review: ["unverified", "no_mail_server"],
+  invalid: ["invalid"],
+  duplicate: ["duplicate"],
+  all: null,
+};
+
+const STATUS_BADGE: Record<
+  EmailStatus,
+  { label: string; tone: "success" | "warning" | "danger" | "neutral" }
+> = {
+  valid: { label: "valid", tone: "success" },
+  unverified: { label: "not verified", tone: "warning" },
+  no_mail_server: { label: "no mail server", tone: "warning" },
+  invalid: { label: "invalid", tone: "danger" },
+  duplicate: { label: "duplicate", tone: "neutral" },
 };
 
 type Props = { searchParams: Promise<Record<string, string | undefined>> };
@@ -53,6 +79,9 @@ export default async function ContactsPage({ searchParams }: Props) {
     : "";
   // Filters on the agency need an inner join (contacts of matching agencies only).
   const byAgency = countries.length > 0 || relevance !== "";
+  const statusView =
+    (params.status ?? "") in STATUS_VIEWS ? params.status! : "";
+  const statuses = STATUS_VIEWS[statusView];
 
   const supabase = await createClient();
   const countsPromise = supabase.rpc("agency_country_counts", {
@@ -61,7 +90,7 @@ export default async function ContactsPage({ searchParams }: Props) {
   let query = supabase
     .from("agency_contacts")
     .select(
-      `id, email, full_name, job_title, is_role_address, source, agencies${byAgency ? "!inner" : ""}(id, name, country_code)`,
+      `id, email, full_name, job_title, is_role_address, source, email_original, email_status, email_note, agencies${byAgency ? "!inner" : ""}(id, name, country_code)`,
       { count: "exact" },
     )
     .eq("workspace_id", workspaceId);
@@ -70,7 +99,15 @@ export default async function ContactsPage({ searchParams }: Props) {
     query = query.in("agencies.relevance", ["A", "B", "C"]);
   else if (relevance) query = query.eq("agencies.relevance", relevance);
   const term = q.replace(/[%,()*]/g, " ").trim();
-  if (term) query = query.or(`email.ilike.%${term}%,full_name.ilike.%${term}%`);
+  // Conditions where any part may match; combined with AND.
+  const anyOf: string[] = [];
+  if (term) anyOf.push(`email.ilike.%${term}%,full_name.ilike.%${term}%`);
+  if (statusView === "")
+    anyOf.push("email_status.is.null,email_status.eq.valid");
+  else if (statuses) query = query.in("email_status", statuses);
+  if (anyOf.length === 1) query = query.or(anyOf[0]!);
+  else if (anyOf.length > 1)
+    query = query.or(`and(${anyOf.map((g) => `or(${g})`).join(",")})`);
   if (source) query = query.eq("source", source);
   if (kind === "person") query = query.eq("is_role_address", false);
   if (kind === "general") query = query.eq("is_role_address", true);
@@ -85,12 +122,18 @@ export default async function ContactsPage({ searchParams }: Props) {
     total: number;
   }[];
   const filtered = Boolean(term || source || kind || byAgency);
+  const what =
+    statusView === ""
+      ? "usable email contacts"
+      : statusView === "all"
+        ? "email contacts (all statuses)"
+        : "email contacts with this status";
 
   return (
     <>
       <PageHeader
         title="Contacts"
-        description={`${total.toLocaleString()} email contacts${filtered ? " match your filters" : ""}.`}
+        description={`${total.toLocaleString()} ${what}${filtered ? " match your filters" : ""}.`}
         actions={
           <LiveRefresh
             tables={["scrape_jobs"]}
@@ -109,6 +152,17 @@ export default async function ContactsPage({ searchParams }: Props) {
               .map((c) => [c.country_code as string, Number(c.total)]),
           )}
           unknown={0}
+        />
+        <FilterSelect
+          param="status"
+          label="Email status"
+          options={[
+            { value: "", label: "Usable emails" },
+            { value: "review", label: "Not verified / no mail server" },
+            { value: "invalid", label: "Invalid" },
+            { value: "duplicate", label: "Duplicates" },
+            { value: "all", label: "All statuses" },
+          ]}
         />
         <FilterSelect
           param="relevance"
@@ -181,6 +235,24 @@ export default async function ContactsPage({ searchParams }: Props) {
                       <StatusBadge tone="neutral" className="ml-2">
                         general
                       </StatusBadge>
+                    )}
+                    {c.email_status && c.email_status !== "valid" && (
+                      <StatusBadge
+                        tone={STATUS_BADGE[c.email_status].tone}
+                        className="ml-2"
+                      >
+                        {STATUS_BADGE[c.email_status].label}
+                      </StatusBadge>
+                    )}
+                    {c.email_note && c.email_status !== "valid" && (
+                      <div className="text-xs text-muted-foreground">
+                        {c.email_note}
+                      </div>
+                    )}
+                    {c.email_original && (
+                      <div className="text-xs text-muted-foreground">
+                        cleaned from “{c.email_original}”
+                      </div>
                     )}
                   </td>
                   <td className="px-4 py-3">{c.full_name ?? "—"}</td>

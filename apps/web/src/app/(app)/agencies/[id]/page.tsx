@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 
 import { LiveRefresh } from "@/components/app/live-refresh";
 import { RelevanceBadge } from "@/components/app/relevance-badge";
+import { StatusBadge } from "@/components/app/status-badge";
 import { countryName } from "@/lib/countries";
 import { requireWorkspace } from "@/lib/auth/workspace";
 import { createClient } from "@/lib/supabase/server";
@@ -44,6 +45,9 @@ type Agency = {
     job_title: string | null;
     is_role_address: boolean;
     source: string;
+    email_original: string | null;
+    email_status: string | null;
+    email_note: string | null;
   }[];
   agency_sources: {
     id: number;
@@ -75,7 +79,7 @@ export default async function AgencyPage({
   const { data: agency } = await supabase
     .from("agencies")
     .select(
-      "id, name, identity_key, website_url, website_title, website_status, country_code, country_name, city, address, phone, description, last_checked_at, created_at, relevance, relevance_keywords, origin, agency_contacts(id, email, full_name, job_title, is_role_address, source), agency_sources(id, source_type, source_name, source_ref, observed_at)",
+      "id, name, identity_key, website_url, website_title, website_status, country_code, country_name, city, address, phone, description, last_checked_at, created_at, relevance, relevance_keywords, origin, agency_contacts(id, email, full_name, job_title, is_role_address, source, email_original, email_status, email_note), agency_sources(id, source_type, source_name, source_ref, observed_at)",
     )
     .eq("id", id)
     .maybeSingle<Agency>();
@@ -183,6 +187,31 @@ export default async function AgencyPage({
                         <span className="ml-2 text-xs text-muted-foreground">
                           (general)
                         </span>
+                      )}
+                      {c.email_status && c.email_status !== "valid" && (
+                        <StatusBadge
+                          tone={
+                            c.email_status === "duplicate"
+                              ? "neutral"
+                              : c.email_status === "invalid"
+                                ? "danger"
+                                : "warning"
+                          }
+                          className="ml-2"
+                        >
+                          {c.email_status.replaceAll("_", " ")}
+                        </StatusBadge>
+                      )}
+                      {(c.email_note || c.email_original) && (
+                        <div className="text-xs text-muted-foreground">
+                          {[
+                            c.email_note,
+                            c.email_original &&
+                              `cleaned from “${c.email_original}”`,
+                          ]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </div>
                       )}
                     </td>
                     <td className="py-2">{c.full_name ?? "—"}</td>
