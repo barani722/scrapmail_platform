@@ -3,8 +3,9 @@
     uv run python -m scrapmail_worker.check_contacts            # report only
     uv run python -m scrapmail_worker.check_contacts --write    # save results
     uv run python -m scrapmail_worker.check_contacts --write --all   # re-check all
+    uv run python -m scrapmail_worker.check_contacts --remove   # delete unusable ones
 
-Nothing is deleted. For each contact:
+Checking deletes nothing. For each contact:
   - the address is cleaned (URL codes like %20, stray symbols, text glued to the
     ending); the original is kept in email_original when it changes,
   - the domain is checked in DNS (exists and accepts mail),
@@ -12,6 +13,10 @@ Nothing is deleted. For each contact:
     with a short note saying why.
 A cleaned address that another contact of the same agency already has is not
 changed (the database allows each address once per agency); it is marked duplicate.
+
+--remove (on request) deletes the contacts marked invalid, and the duplicates after
+copying their name, title and phone to the clean contact they repeat. Deleted rows
+are recorded in the audit log.
 """
 
 from __future__ import annotations
@@ -126,9 +131,18 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--write", action="store_true", help="save the results")
     parser.add_argument("--all", action="store_true", help="re-check contacts checked before")
+    parser.add_argument(
+        "--remove",
+        action="store_true",
+        help="delete invalid contacts and duplicates (merged into their clean twin first)",
+    )
     args = parser.parse_args()
 
     db = Db(load_settings())
+    if args.remove:
+        for row in db.rpc("remove_unusable_contacts", {}) or []:
+            print(f"removed {row['removed']:,} {row['kind']} contacts")
+        return
     every = load_contacts(db)
     # Not checked yet, or DNS did not answer last time.
     contacts = (

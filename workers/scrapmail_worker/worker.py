@@ -33,7 +33,7 @@ from .autopilot import Autopilot, SpeedMeter
 from .config import Settings, load_settings
 from .crawler import Crawler, PermanentError, SiteResult
 from .db import Db
-from .email_check import MAIL_STATUS, DomainChecker
+from .email_check import MAIL_STATUS, NO_DOMAIN, DomainChecker
 from .extract import business_name
 from .normalize import (
     country_code,
@@ -615,6 +615,10 @@ class Worker:
         emails = emails[:20]
         # Checked when saved: does the domain exist and accept email (DNS, cached).
         mail = await asyncio.gather(*(self.domains.check(email_domain(e)) for e in emails))
+        # Addresses on domains that do not exist are not saved at all.
+        checked = [(e, m) for e, m in zip(emails, mail, strict=True) if m != NO_DOMAIN]
+        if not checked:
+            return
         await self._db(
             "insert",
             "agency_contacts",
@@ -629,7 +633,7 @@ class Worker:
                     "email_note": MAIL_STATUS[result][1] or None,
                     "email_checked_at": _now(),
                 }
-                for email, result in zip(emails, mail, strict=True)
+                for email, result in checked
             ],
             on_conflict="agency_id,email_normalized",
             ignore_duplicates=True,

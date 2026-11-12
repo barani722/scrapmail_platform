@@ -159,8 +159,8 @@ export default async function ContactsPage({ searchParams }: Props) {
           options={[
             { value: "", label: "Usable emails" },
             { value: "review", label: "Not verified / no mail server" },
-            { value: "invalid", label: "Invalid (kept for reference)" },
-            { value: "duplicate", label: "Duplicates (kept for reference)" },
+            { value: "invalid", label: "Invalid" },
+            { value: "duplicate", label: "Duplicates" },
             { value: "all", label: "All statuses" },
           ]}
         />
