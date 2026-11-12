@@ -67,7 +67,7 @@ export default async function AdminUsersPage() {
             ? `${pending} registration ${pending === 1 ? "request is" : "requests are"} waiting for review.`
             : "Review registrations, change account status and update passwords."
         }
-        actions={<LiveRefresh tables={["profiles"]} minIntervalMs={1000} />}
+        actions={<LiveRefresh tables={["profiles"]} minIntervalMs={3000} />}
       />
 
       {!users?.length ? (

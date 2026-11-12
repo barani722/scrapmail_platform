@@ -7,9 +7,9 @@ import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
 /**
- * scrape_jobs: scraper activity. Polled (one tiny query on active jobs), because
- * job progress changes with every finished task — too often for Realtime.
- * profiles: account changes (rare), via Supabase Realtime.
+ * What a page follows, checked with one tiny query each (no Realtime: streaming
+ * every scraper change cost the database more than the pages need).
+ * scrape_jobs: progress of active jobs. profiles: account sign-ups and changes.
  */
 type LiveTable = "scrape_jobs" | "profiles";
 
@@ -70,46 +70,44 @@ export function LiveRefresh({
       if (!document.hidden && dirty.current) schedule(0);
     };
 
-    // Job progress: poll active jobs, refresh only when their progress changed.
-    let progress: string | null = null;
+    // Poll what the page follows; refresh only when it changed.
+    const follows = key.split(",");
+    let snapshot: string | null = null;
     const poll = async () => {
       if (document.hidden) return;
-      let query = supabase
-        .from("scrape_jobs")
-        .select("id, status, total_tasks, done_tasks, failed_tasks")
-        .in("status", ["queued", "running"]);
-      if (workspaceId) query = query.eq("workspace_id", workspaceId);
-      const { data, error } = await query.order("id");
-      if (error) return;
+      const parts = await Promise.all([
+        follows.includes("scrape_jobs")
+          ? (() => {
+              let query = supabase
+                .from("scrape_jobs")
+                .select("id, status, total_tasks, done_tasks, failed_tasks")
+                .in("status", ["queued", "running"]);
+              if (workspaceId) query = query.eq("workspace_id", workspaceId);
+              return query.order("id");
+            })()
+          : null,
+        follows.includes("profiles")
+          ? supabase
+              .from("profiles")
+              .select("user_id, status, platform_role, updated_at")
+              .order("user_id")
+          : null,
+      ]);
+      if (parts.some((p) => p?.error)) return;
       setConnected(true);
-      const next = JSON.stringify(data);
-      if (progress !== null && next !== progress) onChange();
-      progress = next;
+      const next = JSON.stringify(parts.map((p) => p?.data ?? null));
+      if (snapshot !== null && next !== snapshot) onChange();
+      snapshot = next;
     };
-    const polling = key.split(",").includes("scrape_jobs")
-      ? setInterval(() => void poll(), minIntervalMs)
-      : null;
-    if (polling) void poll();
-
-    // Account changes: Realtime (rare events).
-    const channel = key.split(",").includes("profiles")
-      ? supabase
-          .channel(`live:profiles:${Math.random().toString(36).slice(2)}`)
-          .on(
-            "postgres_changes",
-            { event: "*", schema: "public", table: "profiles" },
-            onChange,
-          )
-          .subscribe((status) => setConnected(status === "SUBSCRIBED"))
-      : null;
+    const polling = setInterval(() => void poll(), minIntervalMs);
+    void poll();
     document.addEventListener("visibilitychange", onVisible);
 
     return () => {
-      if (polling) clearInterval(polling);
+      clearInterval(polling);
       document.removeEventListener("visibilitychange", onVisible);
       if (timer.current) clearTimeout(timer.current);
       timer.current = null;
-      if (channel) void supabase.removeChannel(channel);
     };
   }, [key, workspaceId, minIntervalMs, router]);
 

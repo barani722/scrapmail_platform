@@ -3,7 +3,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(6);
+select plan(7);
 
 insert into public.workspaces (id, name, slug) values
   ('00000000-0000-0000-0000-0000000000c1', 'Completion', 'completion');
@@ -69,6 +69,26 @@ select is(
      from public.scrape_jobs where id = '00000000-0000-0000-0000-0000000000c2'),
   '2:1:completed',
   'the job completes when its last task finishes'
+);
+
+-- Batch completion: one call for several tasks.
+insert into public.scrape_jobs (id, workspace_id, kind, title, status, total_tasks) values
+  ('00000000-0000-0000-0000-0000000000c3', '00000000-0000-0000-0000-0000000000c1',
+   'discover', 'Batch test', 'running', 3);
+insert into public.scrape_tasks
+  (job_id, workspace_id, kind, payload, status, attempts, max_attempts, locked_by, dedupe_key)
+  select '00000000-0000-0000-0000-0000000000c3', '00000000-0000-0000-0000-0000000000c1',
+       'qualify_candidate', '{}', 'running', a, 3, 'tap-w2', k
+from (values ('d', 1), ('e', 3), ('f', 1)) v(k, a);
+select public.complete_scrape_tasks((
+  select jsonb_agg(jsonb_build_object('id', id, 'success', dedupe_key <> 'e', 'error', 'x'))
+  from public.scrape_tasks where job_id = '00000000-0000-0000-0000-0000000000c3'
+));
+select is(
+  (select done_tasks || ':' || failed_tasks || ':' || status
+     from public.scrape_jobs where id = '00000000-0000-0000-0000-0000000000c3'),
+  '2:1:completed',
+  'a batch of results updates the counters once and completes the job'
 );
 
 select * from finish();

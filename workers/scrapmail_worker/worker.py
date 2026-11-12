@@ -52,6 +52,8 @@ log = logging.getLogger("scrapmail.worker")
 
 IDLE_SECONDS = 5
 LEASE_SECONDS = 600
+FLUSH_SECONDS = 1.0  # finished tasks are reported in batches at this interval
+COMPLETE_BATCH = 100
 TASK_KINDS = [
     "enrich_website",
     "discover_osm",
@@ -101,6 +103,7 @@ class Worker:
         self.osm_slots = asyncio.Semaphore(1)
         self.search_limiter = RateLimiter(0.5)
         self.search_exhausted = False  # set when Serper reports no credits left
+        self.finished: list[dict[str, Any]] = []  # task results waiting to be sent
 
     async def _db(self, method: str, *args: Any, **kwargs: Any) -> Any:
         """Run a (blocking) database call without blocking the event loop."""
@@ -121,6 +124,8 @@ class Worker:
         # Continuous pool: claim new tasks as soon as slots free up. At most one
         # OpenStreetMap query runs at a time; others stay queued (no lease held).
         running: dict[asyncio.Task[None], str] = {}
+        self.finished = []
+        flusher = asyncio.create_task(self._flush_loop())
         while not self.stopping.is_set():
             free = self.settings.concurrency - len(running)
             tasks: list[dict[str, Any]] = []
@@ -159,6 +164,8 @@ class Worker:
                 running.pop(finished, None)
         if running:
             await asyncio.wait(running)
+        flusher.cancel()
+        await self._flush_results()
         await self.crawler.close()
         self.db.close()
         log.info("worker stopped")
@@ -617,14 +624,24 @@ class Worker:
     async def _complete(
         self, task_id: int, success: bool, result: dict[str, Any] | None, error: str | None = None
     ) -> None:
-        try:
-            await self._db(
-                "rpc",
-                "complete_scrape_task",
-                {"p_task_id": task_id, "p_success": success, "p_result": result, "p_error": error},
-            )
-        except Exception:
-            log.exception("could not record result of task %s (lease will expire)", task_id)
+        """Queue the result; results are sent in batches (see _flush_results)."""
+        self.finished.append({"id": task_id, "success": success, "result": result, "error": error})
+
+    async def _flush_results(self) -> None:
+        """Send finished tasks to the database, up to COMPLETE_BATCH per call."""
+        while self.finished:
+            batch = self.finished[:COMPLETE_BATCH]
+            try:
+                await self._db("rpc", "complete_scrape_tasks", {"p_results": batch})
+            except Exception:
+                log.exception("could not record %d task results; retrying", len(batch))
+                return
+            del self.finished[: len(batch)]
+
+    async def _flush_loop(self) -> None:
+        while True:
+            await asyncio.sleep(FLUSH_SECONDS)
+            await self._flush_results()
 
 
 def main() -> None:
@@ -643,8 +660,11 @@ def main() -> None:
         loop.run_until_complete(worker.run())
     except KeyboardInterrupt:
         log.info("stopping (Ctrl+C)")
-        # Give unfinished tasks back now, so the next worker can start on them at once.
+        # Report finished tasks, and give unfinished ones back so the next worker can
+        # start on them at once.
         try:
+            if getattr(worker, "finished", None):
+                worker.db.rpc("complete_scrape_tasks", {"p_results": worker.finished})
             released = worker.db.rpc(
                 "release_worker_tasks", {"p_worker": worker.settings.worker_id}
             )

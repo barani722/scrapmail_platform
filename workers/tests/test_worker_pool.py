@@ -87,3 +87,25 @@ def test_found_websites_are_checked_before_other_tasks(monkeypatch):
 
     assert order[:2] == ["qualify_candidate", "qualify_candidate"]
     assert len(order) == 7
+
+
+def test_task_results_are_sent_in_batches(monkeypatch):
+    monkeypatch.setattr("scrapmail_worker.worker.COMPLETE_BATCH", 2)
+    worker = Worker.__new__(Worker)
+    worker.finished = []
+    calls: list[list[int]] = []
+
+    async def fake_db(method, name, params):
+        assert name == "complete_scrape_tasks"
+        calls.append([r["id"] for r in params["p_results"]])
+
+    worker._db = fake_db
+
+    async def scenario():
+        for task_id in (1, 2, 3):
+            await worker._complete(task_id, True, {"status": "ok"})
+        await worker._flush_results()
+
+    asyncio.run(scenario())
+    assert calls == [[1, 2], [3]]
+    assert worker.finished == []
