@@ -19,6 +19,8 @@ class Settings:
     worker_id: str
     concurrency: int
     user_agent: str
+    serper_api_key: str | None
+    search_monthly_limit: int
 
 
 def load_settings() -> Settings:
@@ -40,4 +42,7 @@ def load_settings() -> Settings:
             "WORKER_USER_AGENT",
             "Mozilla/5.0 (compatible; ScrapMailBot/0.1; business directory research)",
         ),
+        serper_api_key=os.getenv("SERPER_API_KEY") or None,
+        # Serper gives 2,500 free credits once; this cap stays below them.
+        search_monthly_limit=max(0, int(os.getenv("SEARCH_MONTHLY_LIMIT", "2400"))),
     )

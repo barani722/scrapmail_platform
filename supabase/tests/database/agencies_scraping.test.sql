@@ -56,7 +56,7 @@ select is(
 
 reset role;
 select ok(
-  not has_function_privilege('authenticated', 'public.claim_scrape_tasks(text, integer, integer)', 'EXECUTE'),
+  not has_function_privilege('authenticated', 'public.claim_scrape_tasks(text, integer, integer, text[])', 'EXECUTE'),
   'signed-in users cannot claim worker tasks'
 );
 

@@ -10,11 +10,11 @@ from urllib.parse import urljoin, urlsplit
 from bs4 import BeautifulSoup
 
 from .normalize import (
-    FREE_EMAIL_DOMAINS,
     clean_text,
     email_domain,
     extract_emails,
     identity_from_url,
+    is_free_email_domain,
 )
 
 # Link text / URL fragments that usually lead to contact details (multilingual).
@@ -25,18 +25,48 @@ CONTACT_HINTS = re.compile(
     re.IGNORECASE,
 )
 
+# Pages that usually list other businesses (partners, members, affiliates).
+PARTNER_HINTS = re.compile(
+    r"partner|affiliat|member|associat|links|friends|resellers|agents|agencies|"
+    r"partenaire|socios|partners|kooperation",
+    re.IGNORECASE,
+)
+
+# Pages that list emails most often; visited before about/team pages.
+PRIMARY_CONTACT = re.compile(
+    r"contact|kontakt|contatt|contacto|contato|impressum|imprint|legal|mentions", re.IGNORECASE
+)
+
+# Written-out emails: "info [at] agency [dot] com", "info(at)agency.com", "info (arroba) …".
+_AT = re.compile(r"\s*[\[({<]\s*(?:at|@|arroba|chez|ät|at sign)\s*[\])}>]\s*", re.IGNORECASE)
+_DOT = re.compile(r"\s*[\[({<]\s*(?:dot|punto|point|punkt|\.)\s*[\])}>]\s*", re.IGNORECASE)
+
+MAX_TEXT_CHARS = 15_000
+
+
+def deobfuscated_emails(text: str) -> list[str]:
+    """Emails written out to avoid spam bots."""
+    if not _AT.search(text):
+        return []
+    return extract_emails(_DOT.sub(".", _AT.sub("@", text)))
+
 
 @dataclass
 class PageData:
     emails: list[str] = field(default_factory=list)
     phones: list[str] = field(default_factory=list)
     title: str | None = None
+    site_name: str | None = None
     description: str | None = None
     language: str | None = None
     country: str | None = None
     city: str | None = None
     address: str | None = None
+    text: str = ""
     contact_links: list[str] = field(default_factory=list)
+    partner_links: list[str] = field(default_factory=list)
+    # Links to other websites: {identity_key: url}
+    external_links: dict[str, str] = field(default_factory=dict)
 
 
 def _decode_cfemail(encoded: str) -> str | None:
@@ -86,8 +116,15 @@ def parse_page(html: str, page_url: str) -> PageData:
         decoded = _decode_cfemail(node["data-cfemail"])
         if decoded:
             found += extract_emails(decoded)
-    found += extract_emails(soup.get_text(" "))
+    visible_text = soup.get_text(" ")
+    found += extract_emails(visible_text)
+    found += deobfuscated_emails(visible_text)
     data.emails = list(dict.fromkeys(found))
+    data.text = re.sub(r"\s+", " ", visible_text).strip()[:MAX_TEXT_CHARS]
+
+    site_name = soup.find("meta", attrs={"property": "og:site_name"})
+    if site_name and site_name.get("content"):
+        data.site_name = clean_text(site_name["content"], 200)
 
     for a in soup.select('a[href^="tel:"]'):
         phone = _clean_phone(a["href"][4:])
@@ -107,6 +144,13 @@ def parse_page(html: str, page_url: str) -> PageData:
 
     # Structured data (schema.org Organization / LocalBusiness / TravelAgency).
     for item in _json_ld_items(soup):
+        item_type = str(item.get("@type", ""))
+        if (
+            not data.site_name
+            and item.get("name")
+            and any(t in item_type for t in ("Organization", "Business", "Agency", "Corporation"))
+        ):
+            data.site_name = clean_text(str(item["name"]), 200)
         if item.get("email"):
             data.emails += [e for e in extract_emails(str(item["email"])) if e not in data.emails]
         if item.get("telephone"):
@@ -127,17 +171,37 @@ def parse_page(html: str, page_url: str) -> PageData:
             )
             data.address = data.address or (street or None)
 
-    # Candidate pages on the same site.
+    # Links: contact/partner pages on the same site, and links to other websites.
     site = identity_from_url(page_url)
     for a in soup.find_all("a", href=True):
         href = urljoin(page_url, a["href"]).split("#")[0]
-        if not href.startswith("http") or identity_from_url(href) != site:
+        if not href.startswith("http"):
+            continue
+        target = identity_from_url(href)
+        if not target:
+            continue
+        if target != site:
+            data.external_links.setdefault(target, href)
             continue
         label = f"{a.get_text(' ', strip=True)} {urlsplit(href).path}"
         if CONTACT_HINTS.search(label) and href not in data.contact_links:
             data.contact_links.append(href)
+        elif PARTNER_HINTS.search(label) and href not in data.partner_links:
+            data.partner_links.append(href)
 
+    data.contact_links.sort(key=lambda u: 0 if PRIMARY_CONTACT.search(urlsplit(u).path) else 1)
     return data
+
+
+def business_name(page: PageData, fallback: str) -> str:
+    """Best guess of the business name: site name, else the first part of the title."""
+    if page.site_name:
+        return page.site_name
+    if page.title:
+        first = re.split(r"\s+[|\-–—:·»]\s+", page.title)[0].strip()
+        if 2 <= len(first) <= 120:
+            return first
+    return fallback
 
 
 def belongs_to_site(email: str, site_identity: str) -> bool:
@@ -148,5 +212,5 @@ def belongs_to_site(email: str, site_identity: str) -> bool:
         domain == site_domain
         or domain.endswith("." + site_domain)
         or site_domain.endswith("." + domain)
-        or domain in FREE_EMAIL_DOMAINS
+        or is_free_email_domain(domain)
     )
