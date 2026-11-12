@@ -25,8 +25,12 @@ export async function GET(request: NextRequest) {
       "Website",
       "Domain",
       "Country",
-      "Services",
+      "City",
       "Emails",
+      "Phone",
+      "Relevance",
+      "Keywords",
+      "Services",
       "Website status",
     ].join(","),
   ];
@@ -43,11 +47,15 @@ export async function GET(request: NextRequest) {
           a.website_url,
           a.identity_key,
           countryName(a.country_code) ?? a.country_name,
-          a.description,
+          a.city,
           a.agency_contacts
             .map((c) => c.email)
             .filter(Boolean)
             .join("; "),
+          a.phone,
+          a.relevance,
+          (a.relevance_keywords ?? []).join("; "),
+          a.description,
           a.website_status,
         ]
           .map(csvCell)
