@@ -28,9 +28,14 @@ adjusts how many tasks run at once, between 16 and `WORKER_MAX_CONCURRENCY`
 stopped and retried later. Every 30 s it reports speed and health; the Scraping
 Jobs page shows it.
 
-**Supervisor.** `pnpm worker` runs `scrapmail_worker.supervisor`, which starts the
-worker and restarts it when it exits, stops reporting for 3 minutes, or stays
-below 30% of its best speed for about 4 minutes while busy.
+**Supervisor.** `pnpm worker` runs `scrapmail_worker.supervisor`. One worker uses
+one CPU core for its main work, so the supervisor runs a **pool of workers** sized
+to the machine: it adds a worker (up to `WORKER_PROCESSES_MAX`, default
+(cores − 1) / 2) while all workers are at their limit, there is work queued, CPU is
+below 70 %, memory below 75 % and the database answers within 400 ms. It removes
+one when CPU is above 90 %, memory above 85 %, the database takes over 1.5 s, or
+little work is left. Each worker is restarted when it exits, stops reporting for
+3 minutes, or stays below 30 % of its best speed for about 4 minutes while busy.
 
 ## Modules
 

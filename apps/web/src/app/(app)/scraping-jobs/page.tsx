@@ -56,7 +56,7 @@ export default async function ScrapingJobsPage() {
     { data: usage },
     { count: linkSites },
     { data: ranking },
-    { data: worker },
+    { data: workers },
   ] = await Promise.all([
     supabase
       .from("scrape_jobs")
@@ -86,8 +86,8 @@ export default async function ScrapingJobsPage() {
         "worker_id, state, updated_at, concurrency, running, tasks_per_minute, loop_lag_ms, oldest_task_seconds, restarts",
       )
       .order("updated_at", { ascending: false })
-      .limit(1)
-      .maybeSingle<WorkerStatus>(),
+      .limit(20)
+      .returns<WorkerStatus[]>(),
   ]);
 
   const rankedCountries = (ranking ?? []) as Ranking[];
@@ -115,7 +115,7 @@ export default async function ScrapingJobsPage() {
         }
       />
 
-      <WorkerHealth status={worker ?? null} now={new Date().getTime()} />
+      <WorkerHealth statuses={workers ?? []} now={new Date().getTime()} />
 
       <section className="mb-6 rounded-xl border bg-card p-6 shadow-sm">
         <h2 className="text-lg font-bold">Find new agencies</h2>

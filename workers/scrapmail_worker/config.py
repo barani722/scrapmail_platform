@@ -21,6 +21,7 @@ class Settings:
     max_concurrency: int
     restarts: int  # set by the supervisor
     status_file: str | None  # heartbeat file read by the supervisor
+    parse_processes: int  # HTML parser processes (set lower when several workers run)
     user_agent: str
     serper_api_key: str | None
     search_monthly_limit: int
@@ -44,6 +45,9 @@ def load_settings() -> Settings:
         max_concurrency=max(1, int(os.getenv("WORKER_MAX_CONCURRENCY", "300"))),
         restarts=int(os.getenv("WORKER_RESTARTS", "0")),
         status_file=os.getenv("WORKER_STATUS_FILE") or None,
+        parse_processes=max(
+            1, int(os.getenv("WORKER_PARSE_PROCESSES") or max(1, (os.cpu_count() or 2) - 1))
+        ),
         user_agent=os.getenv(
             "WORKER_USER_AGENT",
             "Mozilla/5.0 (compatible; ScrapMailBot/0.1; business directory research)",

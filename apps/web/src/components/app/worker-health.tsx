@@ -1,4 +1,4 @@
-import { Activity, Gauge, RotateCcw, Timer, Zap } from "lucide-react";
+import { Activity, Cpu, Gauge, RotateCcw, Timer, Zap } from "lucide-react";
 
 import { StatusBadge } from "@/components/app/status-badge";
 
@@ -23,19 +23,27 @@ function ago(seconds: number) {
   return `${Math.round(seconds / 3600)} h ago`;
 }
 
-/** Live health of the scraping worker: speed, autopilot and supervisor restarts. */
+/**
+ * Live health of the scraping workers (the supervisor runs one or more,
+ * depending on the machine's capacity): speed, autopilot and restarts.
+ */
 export function WorkerHealth({
-  status,
+  statuses,
   now,
 }: {
-  status: WorkerStatus | null;
+  statuses: WorkerStatus[];
   now: number;
 }) {
-  const age = status
-    ? (now - new Date(status.updated_at).getTime()) / 1000
-    : Infinity;
-  const online = status?.state === "running" && age < ONLINE_SECONDS;
-  const lag = status?.loop_lag_ms ?? 0;
+  const age = (s: WorkerStatus) =>
+    (now - new Date(s.updated_at).getTime()) / 1000;
+  const online = statuses.filter(
+    (s) => s.state === "running" && age(s) < ONLINE_SECONDS,
+  );
+  const latest = statuses[0];
+  const sum = (pick: (s: WorkerStatus) => number | null) =>
+    online.reduce((total, s) => total + (pick(s) ?? 0), 0);
+  const lag = Math.max(0, ...online.map((s) => s.loop_lag_ms ?? 0));
+  const restarts = Math.max(0, ...online.map((s) => s.restarts));
 
   return (
     <section
@@ -45,21 +53,26 @@ export function WorkerHealth({
       <div className="flex items-center gap-2">
         <Activity className="size-4 text-muted-foreground" />
         <span className="font-semibold">Worker</span>
-        <StatusBadge tone={online ? "success" : "warning"}>
-          {online ? "Online" : "Offline"}
+        <StatusBadge tone={online.length ? "success" : "warning"}>
+          {online.length ? "Online" : "Offline"}
         </StatusBadge>
       </div>
-      {online && status ? (
+      {online.length ? (
         <>
+          <Metric
+            icon={<Cpu className="size-4" />}
+            label="Processes"
+            value={online.length.toLocaleString()}
+          />
           <Metric
             icon={<Zap className="size-4" />}
             label="Speed"
-            value={`${(status.tasks_per_minute ?? 0).toLocaleString()} tasks/min`}
+            value={`${sum((s) => s.tasks_per_minute).toLocaleString()} tasks/min`}
           />
           <Metric
             icon={<Gauge className="size-4" />}
             label="Autopilot"
-            value={`${status.running ?? 0} of ${status.concurrency ?? 0} at once`}
+            value={`${sum((s) => s.running)} of ${sum((s) => s.concurrency)} at once`}
           />
           <Metric
             icon={<Timer className="size-4" />}
@@ -69,16 +82,16 @@ export function WorkerHealth({
           <Metric
             icon={<RotateCcw className="size-4" />}
             label="Auto restarts"
-            value={status.restarts.toLocaleString()}
+            value={restarts.toLocaleString()}
           />
           <span className="ml-auto text-xs text-muted-foreground">
-            Updated {ago(age)}
+            Updated {ago(Math.min(...online.map(age)))}
           </span>
         </>
       ) : (
         <span className="text-sm text-muted-foreground">
-          {status
-            ? `Last report ${ago(age)}. Jobs wait in the queue until the worker runs again.`
+          {latest
+            ? `Last report ${ago(age(latest))}. Jobs wait in the queue until the worker runs again.`
             : "No worker has reported yet. Jobs wait in the queue until the worker runs."}
         </span>
       )}

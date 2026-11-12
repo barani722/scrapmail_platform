@@ -20,7 +20,6 @@ import asyncio
 import contextlib
 import json
 import logging
-import os
 import signal
 import socket
 import time
@@ -104,7 +103,7 @@ class Worker:
         self.crawler = Crawler(
             settings.user_agent,
             max_connections=settings.max_concurrency * 2,
-            parse_processes=max(1, (os.cpu_count() or 2) - 1),
+            parse_processes=settings.parse_processes,
         )
         self.stopping = asyncio.Event()
         # Shared, polite limits for external services.
@@ -120,12 +119,18 @@ class Worker:
         )
         self.speed = SpeedMeter()
         self.loop_lag = 0.0
+        self.db_ms = 0.0  # average database call time (the supervisor watches it)
         self.running: dict[asyncio.Task[None], tuple[str, float]] = {}
         self.started_at = _now()
 
     async def _db(self, method: str, *args: Any, **kwargs: Any) -> Any:
         """Run a (blocking) database call without blocking the event loop."""
-        return await asyncio.to_thread(getattr(self.db, method), *args, **kwargs)
+        started = time.monotonic()
+        try:
+            return await asyncio.to_thread(getattr(self.db, method), *args, **kwargs)
+        finally:
+            elapsed = (time.monotonic() - started) * 1000
+            self.db_ms = elapsed if not self.db_ms else 0.9 * self.db_ms + 0.1 * elapsed
 
     async def run(self) -> None:
         # Database calls run in threads: one per task, so no task waits for a free thread
@@ -703,6 +708,7 @@ class Worker:
             "loop_lag_ms": round(self.loop_lag * 1000),
             "oldest_task_seconds": round(oldest),
             "restarts": self.settings.restarts,
+            "db_latency_ms": round(self.db_ms),
         }
 
     async def _report_status(self, state: str) -> None:
