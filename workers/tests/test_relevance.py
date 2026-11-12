@@ -49,3 +49,20 @@ def test_theatre_and_comedy_ticket_seller_is_a():
 def test_concierge_and_tourism_agency_is_c():
     assert rate("Luxury conciergerie and tourism agency in Monaco.").level == "C"
     assert rate("Agencia de turismo y viajes.").level == "C"
+
+
+def test_local_language_agencies_are_rated():
+    # Nordic football-trip agencies (compound words).
+    assert rate("Fotbollsresor till Premier League. Köp biljetter och resor.").level == "A"
+    assert rate("Fodboldrejser og billetter til Premier League kampe.").level == "A"
+    # German sharp s, Polish, Japanese, Arabic, Hebrew.
+    assert rate("Fußballreisen und Tickets für die Bundesliga.").level == "A"
+    assert rate("Wyjazdy na mecze Premier League, bilety i wycieczki.").level == "A"
+    assert rate("プレミアリーグ観戦ツアー、サッカー観戦チケット").level == "A"
+    assert rate("وكالة سفر رحلات سياحة").level == "C"
+    assert rate("סוכנות נסיעות וחבילות נופש").level == "C"
+
+
+def test_repeated_keyword_counts_once():
+    r = rate("liput")
+    assert r.keywords == ["liput"]

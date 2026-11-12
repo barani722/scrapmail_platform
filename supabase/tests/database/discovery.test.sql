@@ -3,7 +3,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(11);
+select plan(14);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-0000000000e1', 'disc-a@test.local'),
@@ -85,6 +85,32 @@ select is(
   array['queued:0', 'running:1'],
   'a released task is queued again without using an attempt'
 );
+
+-- Country ranking for "Use remaining searches" (RLS: own workspace only).
+insert into public.agencies (workspace_id, name, normalized_name, identity_key, country_code) values
+  ('00000000-0000-0000-0000-0000000000f1', 'Rank A', 'rank A', 'rank-a.com', 'SE'),
+  ('00000000-0000-0000-0000-0000000000f1', 'Rank B', 'rank B', 'rank-b.com', 'SE'),
+  ('00000000-0000-0000-0000-0000000000f1', 'Rank C', 'rank C', 'rank-c.com', 'DK'),
+  ('00000000-0000-0000-0000-0000000000f2', 'Rank D', 'rank D', 'rank-d.com', 'NO');
+set local role authenticated;
+set local request.jwt.claims to '{"sub":"00000000-0000-0000-0000-0000000000e1","role":"authenticated"}';
+select is(
+  (select array_agg(country_code || ':' || agencies) from public.search_country_ranking('00000000-0000-0000-0000-0000000000f1')),
+  array['SE:2', 'DK:1'],
+  'countries are ranked by agency count'
+);
+select is(
+  (select count(*)::int from public.search_country_ranking('00000000-0000-0000-0000-0000000000f2')),
+  0,
+  'other workspaces are not ranked'
+);
+select is(
+  (select array_agg(country_code || ':' || total order by country_code)
+     from public.agency_country_counts('00000000-0000-0000-0000-0000000000f1')),
+  array['DK:1', 'SE:2'],
+  'country filter counts only the own workspace'
+);
+reset role;
 
 select * from finish();
 rollback;

@@ -60,3 +60,52 @@ def test_pool_runs_one_osm_query_at_a_time_and_every_task_once(monkeypatch):
     assert sorted(processed) == list(range(10))
     assert active["max_osm"] == 1
     assert active["max_all"] == 3
+
+
+def test_found_websites_are_checked_before_other_tasks(monkeypatch):
+    queue = FakeQueue(["discover_links"] * 5 + ["qualify_candidate"] * 2)
+    worker = Worker.__new__(Worker)
+    worker.settings = SimpleNamespace(worker_id="t", concurrency=2, serper_api_key=None)
+    worker.stopping = asyncio.Event()
+    worker.crawler = SimpleNamespace(close=lambda: asyncio.sleep(0))
+    worker.db = SimpleNamespace(close=lambda: None)
+    order: list[str] = []
+
+    async def fake_db(method, name, params):
+        return queue.rpc(name, params)
+
+    async def fake_process(task):
+        order.append(task["kind"])
+        await asyncio.sleep(0.01)
+        if len(order) == 7:
+            worker.stopping.set()
+
+    worker._db = fake_db
+    worker.process = fake_process
+    monkeypatch.setattr("scrapmail_worker.worker.IDLE_SECONDS", 0.01)
+    asyncio.run(worker.run())
+
+    assert order[:2] == ["qualify_candidate", "qualify_candidate"]
+    assert len(order) == 7
+
+
+def test_task_results_are_sent_in_batches(monkeypatch):
+    monkeypatch.setattr("scrapmail_worker.worker.COMPLETE_BATCH", 2)
+    worker = Worker.__new__(Worker)
+    worker.finished = []
+    calls: list[list[int]] = []
+
+    async def fake_db(method, name, params):
+        assert name == "complete_scrape_tasks"
+        calls.append([r["id"] for r in params["p_results"]])
+
+    worker._db = fake_db
+
+    async def scenario():
+        for task_id in (1, 2, 3):
+            await worker._complete(task_id, True, {"status": "ok"})
+        await worker._flush_results()
+
+    asyncio.run(scenario())
+    assert calls == [[1, 2], [3]]
+    assert worker.finished == []

@@ -79,9 +79,9 @@ export default async function AgenciesPage({ searchParams }: Props) {
         actions={
           <div className="flex items-center gap-3">
             <LiveRefresh
-              tables={["agencies", "agency_contacts"]}
+              tables={["scrape_jobs"]}
               workspaceId={workspaceId}
-              minIntervalMs={4000}
+              minIntervalMs={10000}
             />
             <Button asChild variant="outline">
               <a

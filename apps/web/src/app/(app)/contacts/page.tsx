@@ -69,9 +69,9 @@ export default async function ContactsPage({ searchParams }: Props) {
         description={`${total.toLocaleString()} email contacts${term || source || kind ? " match your filters" : ""}.`}
         actions={
           <LiveRefresh
-            tables={["agency_contacts"]}
+            tables={["scrape_jobs"]}
             workspaceId={workspaceId}
-            minIntervalMs={4000}
+            minIntervalMs={10000}
           />
         }
       />
