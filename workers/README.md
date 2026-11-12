@@ -11,12 +11,12 @@ talk to Supabase with the secret key (server-side only).
 
 ## Commands (from the repository root)
 
-| Command              | What it does                                                           |
-| -------------------- | ---------------------------------------------------------------------- |
-| `pnpm worker`        | Start the worker under the supervisor (auto-restart; stop: Ctrl+C)     |
-| `pnpm worker:single` | Start one worker without the supervisor                                |
+| Command              | What it does                                                         |
+| -------------------- | -------------------------------------------------------------------- |
+| `pnpm worker`        | Start the worker under the supervisor (auto-restart; stop: Ctrl+C)   |
+| `pnpm worker:single` | Start one worker without the supervisor                              |
 | `pnpm emails:check`  | Clean and DNS-check contact emails (dry run; add `--write` to save)  |
-| `pnpm import:client` | Dry run of the client spreadsheet import (`docs/`); add `-- --write`   |
+| `pnpm import:client` | Dry run of the client spreadsheet import (`docs/`); add `-- --write` |
 
 Several workers can run at once; each claims tasks atomically from the
 database queue. Tasks of a stopped or crashed worker are picked up again after
