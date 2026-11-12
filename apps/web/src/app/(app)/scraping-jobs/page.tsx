@@ -16,7 +16,10 @@ import { CancelJobButton, DiscoveryForm, NewJobForm } from "./job-controls";
 
 export const metadata: Metadata = { title: "Scraping Jobs" };
 
-/** Must match SEARCH_MONTHLY_LIMIT in workers/.env (the worker enforces it). */
+/**
+ * Must match SEARCH_MONTHLY_LIMIT in workers/.env (the worker enforces it).
+ * 2,500 free Serper credits minus a reserve of 100.
+ */
 const SEARCH_MONTHLY_LIMIT = 2400;
 
 type Job = {
@@ -30,6 +33,8 @@ type Job = {
   created_at: string;
 };
 
+type Ranking = { country_code: string; searched: boolean };
+
 type Stats = {
   job_id: string;
   accepted: number;
@@ -42,31 +47,37 @@ export default async function ScrapingJobsPage() {
   const supabase = await createClient();
   const month = new Date().toISOString().slice(0, 7) + "-01";
 
-  const [{ data: jobs }, { data: usage }, { count: linkSites }] =
-    await Promise.all([
-      supabase
-        .from("scrape_jobs")
-        .select(
-          "id, kind, title, status, total_tasks, done_tasks, failed_tasks, created_at",
-        )
-        .eq("workspace_id", workspaceId)
-        .order("created_at", { ascending: false })
-        .limit(50)
-        .returns<Job[]>(),
-      supabase
-        .from("search_usage")
-        .select("used")
-        .eq("provider", "serper")
-        .eq("month", month)
-        .maybeSingle<{ used: number }>(),
-      supabase
-        .from("agencies")
-        .select("id", { count: "exact", head: true })
-        .eq("workspace_id", workspaceId)
-        .not("website_url", "is", null)
-        .or("website_status.is.null,website_status.eq.ok"),
-    ]);
+  const [
+    { data: jobs },
+    { data: usage },
+    { count: linkSites },
+    { data: ranking },
+  ] = await Promise.all([
+    supabase
+      .from("scrape_jobs")
+      .select(
+        "id, kind, title, status, total_tasks, done_tasks, failed_tasks, created_at",
+      )
+      .eq("workspace_id", workspaceId)
+      .order("created_at", { ascending: false })
+      .limit(50)
+      .returns<Job[]>(),
+    supabase
+      .from("search_usage")
+      .select("used")
+      .eq("provider", "serper")
+      .eq("month", month)
+      .maybeSingle<{ used: number }>(),
+    supabase
+      .from("agencies")
+      .select("id", { count: "exact", head: true })
+      .eq("workspace_id", workspaceId)
+      .not("website_url", "is", null)
+      .or("website_status.is.null,website_status.eq.ok"),
+    supabase.rpc("search_country_ranking", { p_workspace_id: workspaceId }),
+  ]);
 
+  const rankedCountries = (ranking ?? []) as Ranking[];
   const discoverIds = (jobs ?? [])
     .filter((j) => j.kind === "discover")
     .map((j) => j.id);
@@ -102,6 +113,12 @@ export default async function ScrapingJobsPage() {
           searchUsed={usage?.used ?? 0}
           searchLimit={SEARCH_MONTHLY_LIMIT}
           linkSites={linkSites ?? 0}
+          unsearchedCountries={rankedCountries
+            .filter((r) => !r.searched)
+            .map((r) => r.country_code)}
+          searchedCountries={rankedCountries
+            .filter((r) => r.searched)
+            .map((r) => r.country_code)}
         />
       </section>
 

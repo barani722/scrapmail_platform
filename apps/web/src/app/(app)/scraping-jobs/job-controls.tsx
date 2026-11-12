@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2, Play, Search } from "lucide-react";
+import { Loader2, Play, Search, Sparkles } from "lucide-react";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
@@ -8,6 +8,7 @@ import { StatusBadge } from "@/components/app/status-badge";
 import { Button } from "@/components/ui/button";
 import { DropdownSelect } from "@/components/ui/dropdown-select";
 import { MultiCountrySelect } from "@/components/ui/multi-country-select";
+import { ALL_COUNTRIES } from "@/lib/countries";
 import {
   DISCOVERY_SOURCES,
   type DiscoverySource,
@@ -55,10 +56,16 @@ export function DiscoveryForm({
   searchUsed,
   searchLimit,
   linkSites,
+  unsearchedCountries,
+  searchedCountries,
 }: {
   searchUsed: number;
   searchLimit: number;
   linkSites: number;
+  /** Countries with agencies, never searched yet, most agencies first. */
+  unsearchedCountries: string[];
+  /** Countries already searched. */
+  searchedCountries: string[];
 }) {
   const [source, setSource] = useState<DiscoverySource>("osm");
   const [countries, setCountries] = useState<string[]>(MAIN_MARKETS);
@@ -67,6 +74,18 @@ export function DiscoveryForm({
 
   const searches = countries.length * queries.length;
   const remaining = Math.max(0, searchLimit - searchUsed);
+  // As many new countries as the remaining searches cover with the chosen phrases:
+  // countries with the most agencies first, then countries without agencies yet.
+  const fillCountries = [
+    ...unsearchedCountries.filter((code) =>
+      ALL_COUNTRIES.some((c) => c.code === code),
+    ),
+    ...ALL_COUNTRIES.map((c) => c.code).filter(
+      (code) =>
+        !unsearchedCountries.includes(code) &&
+        !searchedCountries.includes(code),
+    ),
+  ].slice(0, queries.length ? Math.floor(remaining / queries.length) : 0);
   const estimate =
     source === "osm"
       ? `${countries.length} ${countries.length === 1 ? "country" : "countries"} · free`
@@ -125,6 +144,18 @@ export function DiscoveryForm({
             presets={[{ label: "Main markets", codes: MAIN_MARKETS }]}
             disabled={pending}
           />
+          {source === "search" && (
+            <Button
+              type="button"
+              variant="outline"
+              disabled={pending || fillCountries.length === 0}
+              onClick={() => setCountries(fillCountries)}
+              title="Countries not searched yet, most agencies first, as many as the remaining searches cover"
+            >
+              <Sparkles />
+              Use remaining searches ({fillCountries.length} countries)
+            </Button>
+          )}
         </div>
       )}
 
