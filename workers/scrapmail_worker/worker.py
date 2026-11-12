@@ -643,6 +643,14 @@ def main() -> None:
         loop.run_until_complete(worker.run())
     except KeyboardInterrupt:
         log.info("stopping (Ctrl+C)")
+        # Give unfinished tasks back now, so the next worker can start on them at once.
+        try:
+            released = worker.db.rpc(
+                "release_worker_tasks", {"p_worker": worker.settings.worker_id}
+            )
+            log.info("released %s unfinished tasks", released)
+        except Exception:
+            log.exception("could not release tasks (their leases will expire)")
     finally:
         loop.close()
 
