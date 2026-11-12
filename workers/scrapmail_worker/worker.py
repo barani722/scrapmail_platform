@@ -33,10 +33,12 @@ from .autopilot import Autopilot, SpeedMeter
 from .config import Settings, load_settings
 from .crawler import Crawler, PermanentError, SiteResult
 from .db import Db
+from .email_check import MAIL_STATUS, DomainChecker
 from .extract import business_name
 from .normalize import (
     country_code,
     country_from_domain,
+    email_domain,
     is_role_address,
     normalize_name,
 )
@@ -122,6 +124,7 @@ class Worker:
         self.db_ms = 0.0  # average database call time (the supervisor watches it)
         self.running: dict[asyncio.Task[None], tuple[str, float]] = {}
         self.started_at = _now()
+        self.domains = DomainChecker()
 
     async def _db(self, method: str, *args: Any, **kwargs: Any) -> Any:
         """Run a (blocking) database call without blocking the event loop."""
@@ -609,6 +612,9 @@ class Worker:
     # -- shared writes --------------------------------------------------------------------
 
     async def _save_contacts(self, workspace_id: str, agency_id: str, emails: list[str]) -> None:
+        emails = emails[:20]
+        # Checked when saved: does the domain exist and accept email (DNS, cached).
+        mail = await asyncio.gather(*(self.domains.check(email_domain(e)) for e in emails))
         await self._db(
             "insert",
             "agency_contacts",
@@ -619,8 +625,11 @@ class Worker:
                     "email": email,
                     "is_role_address": is_role_address(email),
                     "source": "website",
+                    "email_status": MAIL_STATUS[result][0],
+                    "email_note": MAIL_STATUS[result][1] or None,
+                    "email_checked_at": _now(),
                 }
-                for email in emails[:20]
+                for email, result in zip(emails, mail, strict=True)
             ],
             on_conflict="agency_id,email_normalized",
             ignore_duplicates=True,

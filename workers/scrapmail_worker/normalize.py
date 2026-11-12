@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 
 import tldextract
 
@@ -304,12 +304,103 @@ ROLE_PREFIXES = (
 
 EMAIL_RE = re.compile(r"[A-Za-z0-9._%+'-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,24}")
 
-# Values that look like emails but are not real contacts.
+# Values that look like emails but are not real contacts (images, samples, trackers).
 _EMAIL_JUNK = re.compile(
-    r"(\.(png|jpe?g|gif|webp|svg)$)|(@(example|domain|email|sentry|wixpress)\.)|"
-    r"(@sentry)|(^(user|name|your|email|test)@)",
+    r"(\.(png|jpe?g|gif|webp|svg)$)|(@(example|domain|yourdomain|email|sentry|wixpress)\.)|"
+    r"(@sentry)|(^(user|name|your|yourname|youremail|email|test|example|someone)@)",
     re.IGNORECASE,
 )
+
+# Words pages glue directly after an address ("info@agency.comphone").
+_GLUED_WORDS = (
+    "subject",
+    "payment",
+    "phone",
+    "telefon",
+    "tel",
+    "fax",
+    "mobile",
+    "whatsapp",
+    "contact",
+    "email",
+    "mail",
+    "website",
+    "web",
+    "www",
+    "https",
+    "http",
+    "call",
+    "address",
+    "office",
+    "skype",
+    "info",
+)
+
+
+def is_placeholder_email(email: str) -> bool:
+    """Sample or technical address (example@…, name@domain.com, image files, trackers)."""
+    return bool(_EMAIL_JUNK.search(email))
+
+
+def _known_ending(domain: str) -> bool:
+    # A registered ending; the whole domain may itself be one (e.g. "sa.gov.au").
+    return bool(_extract(domain).suffix)
+
+
+def repair_domain_ending(domain: str) -> list[str]:
+    """Candidates for a domain whose ending has extra text glued to it, best first.
+
+    "gmail.compayment" -> ["gmail.com"]; "camelus.itg" -> ["camelus.it"] (a guess that
+    must be confirmed by a DNS check).
+    """
+    head, _, last = domain.rpartition(".")
+    if not head:
+        return []
+    candidates = [
+        f"{head}.{last[: -len(word)]}"
+        for word in _GLUED_WORDS
+        if last.endswith(word) and len(last) > len(word)
+    ]
+    candidates += [f"{head}.{last[:-n]}" for n in (1, 2, 3) if len(last) - n >= 2]
+    return [c for c in dict.fromkeys(candidates) if _known_ending(c)]
+
+
+def clean_email(raw: str | None) -> tuple[str | None, list[str]]:
+    """Repair a scraped address without guessing beyond the evidence.
+
+    Returns (address, notes): the cleaned address (None if there is none in the
+    value) and what was changed. Domain endings that needed a guess are noted with
+    "check ending" so a DNS check can confirm them.
+    """
+    original = str(raw or "")
+    notes: list[str] = []
+    text = unquote(original)  # "%20" -> " ", "%3c" -> "<"
+    if text != original:
+        notes.append("decoded %xx characters")
+    text = re.sub(r"(?i)^\s*mailto:", "", text.strip())
+    matches = EMAIL_RE.findall(text)
+    if not matches:
+        return None, [*notes, "no email address in the value"]
+    email = matches[0].lower()
+    local, _, domain = email.rpartition("@")
+    clean_local = local.strip(".'-_%+")
+    domain = domain.strip(".-")
+    if not clean_local:
+        return None, [*notes, "no name before @"]
+    if _EMAIL_JUNK.search(f"{clean_local}@{domain}"):
+        # Image file names, sample and tracking addresses: never "repair" them.
+        return f"{clean_local}@{domain}", [*notes, "sample or technical address"]
+    if not _known_ending(domain):
+        candidates = repair_domain_ending(domain)
+        if candidates:
+            notes.append(f"check ending: {domain} -> {candidates[0]}")
+            domain = candidates[0]
+        else:
+            notes.append(f"unknown domain ending: {domain}")
+    cleaned = f"{clean_local}@{domain}"
+    if cleaned != original.strip().lower() and not notes:
+        notes.append("removed extra characters")
+    return cleaned, notes
 
 
 def normalize_url(raw: str | None) -> str | None:
@@ -368,9 +459,12 @@ def normalize_name(raw: str | None) -> str:
 def extract_emails(raw: str | None) -> list[str]:
     """All valid-looking email addresses in a text, lower-cased, de-duplicated."""
     found: list[str] = []
-    for match in EMAIL_RE.findall(str(raw or "")):
-        email = match.strip(".'").lower()
-        if not _EMAIL_JUNK.search(email) and email not in found:
+    # Decode "%20" etc. first: mailto links are URL-encoded ("mailto:%20info@…").
+    for match in EMAIL_RE.findall(unquote(str(raw or ""))):
+        if _EMAIL_JUNK.search(match):
+            continue
+        email, _ = clean_email(match)
+        if email and not _EMAIL_JUNK.search(email) and email not in found:
             found.append(email)
     return found
 

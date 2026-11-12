@@ -194,6 +194,11 @@ export async function queryAgencies(
     );
   }
 
+  // Only usable addresses count and are shown (invalid / duplicate ones are kept
+  // in the database for reference). Not yet checked (new imports) count as usable.
+  query = query.or("email_status.is.null,email_status.eq.valid", {
+    referencedTable: "agency_contacts",
+  });
   if (needsEmail) query = query.not("agency_contacts.email", "is", null);
   if (filters.contact === "no_email") query = query.is("agency_contacts", null);
   if (filters.contact === "phone" || filters.contact === "email_phone")

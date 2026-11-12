@@ -51,3 +51,39 @@ def test_countries():
     assert country_code("Netherland") == "NL"
     assert country_code("USA/International") == "US"
     assert country_code("Atlantis") is None
+
+
+def test_clean_email_repairs_scraped_addresses():
+    from scrapmail_worker.normalize import clean_email
+
+    cases = {
+        "%20%20explore@takeofftravel.co.za": "explore@takeofftravel.co.za",
+        "%20%20office@call-us-assistance.com": "office@call-us-assistance.com",
+        "marvin%20jay%20mast%20%3cmarvinjay@goldenruletravel.com": "marvinjay@goldenruletravel.com",
+        "-booking@mytripfares.com": "booking@mytripfares.com",
+        "_incentives@hollandamerica.com": "incentives@hollandamerica.com",
+        "mailto:Info@Agency.com": "info@agency.com",
+        "veroautphenne@yahoo.comsubject": "veroautphenne@yahoo.com",
+        "mountainrocktreks@gmail.compayment": "mountainrocktreks@gmail.com",
+        "info@agency.com": "info@agency.com",
+    }
+    for raw, expected in cases.items():
+        assert clean_email(raw)[0] == expected, raw
+    assert clean_email("info@agency.com")[1] == []  # nothing changed, nothing noted
+
+
+def test_clean_email_keeps_unrepairable_values_recognisable():
+    from scrapmail_worker.normalize import clean_email
+
+    assert clean_email("@mongolei.com")[0] is None
+    assert clean_email("not an email")[0] is None
+    email, notes = clean_email("info@camelus.itg")
+    assert email == "info@camelus.it"
+    assert notes[0].startswith("check ending")  # a guess: must be confirmed by DNS
+
+
+def test_extracted_mailto_links_are_decoded():
+    from scrapmail_worker.normalize import extract_emails
+
+    assert extract_emails("%20%20geral@inviagens.pt") == ["geral@inviagens.pt"]
+    assert extract_emails("example@gmail.com, info@agency.com") == ["info@agency.com"]

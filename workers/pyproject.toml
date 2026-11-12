@@ -5,6 +5,7 @@ description = "Scrap&Mail background workers: data import and website scraping"
 requires-python = ">=3.13,<3.14"
 dependencies = [
   "beautifulsoup4>=4.15,<5",
+  "dnspython>=2.9.0",
   "httpx>=0.28,<0.29",
   "lxml>=6.1,<7",
   "openpyxl>=3.1,<4",
