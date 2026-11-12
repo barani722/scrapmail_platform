@@ -47,4 +47,4 @@ Thumbs.db
 .idea/
 
 # --- Worker runtime state ------------------------------------------------
-workers/.worker-status.json
+workers/.worker-status*.json

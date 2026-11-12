@@ -22,6 +22,7 @@ def make_worker(concurrency: int) -> Worker:
     worker.autopilot = Autopilot(concurrency, minimum=1, maximum=concurrency)
     worker.speed = SpeedMeter()
     worker.loop_lag = 0.0
+    worker.db_ms = 0.0
     worker.running = {}
     worker.finished = []
     worker.started_at = "now"
