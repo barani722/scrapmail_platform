@@ -13,12 +13,24 @@ talk to Supabase with the secret key (server-side only).
 
 | Command              | What it does                                                         |
 | -------------------- | -------------------------------------------------------------------- |
-| `pnpm worker`        | Start a scraping worker (keeps running; stop with Ctrl+C)            |
+| `pnpm worker`        | Start the worker under the supervisor (auto-restart; stop: Ctrl+C)   |
+| `pnpm worker:single` | Start one worker without the supervisor                              |
 | `pnpm import:client` | Dry run of the client spreadsheet import (`docs/`); add `-- --write` |
 
 Several workers can run at once; each claims tasks atomically from the
 database queue. Tasks of a stopped or crashed worker are picked up again after
-their 10-minute lease expires. Raise `WORKER_CONCURRENCY` (default 8) in `.env` for big jobs.
+their 10-minute lease expires; a worker stopped with Ctrl+C or by the supervisor
+hands its tasks back at once.
+
+**Autopilot.** Every 5 s the worker measures how busy its main thread is and
+adjusts how many tasks run at once, between 16 and `WORKER_MAX_CONCURRENCY`
+(default 300), starting at `WORKER_CONCURRENCY`. A task running over 4 minutes is
+stopped and retried later. Every 30 s it reports speed and health; the Scraping
+Jobs page shows it.
+
+**Supervisor.** `pnpm worker` runs `scrapmail_worker.supervisor`, which starts the
+worker and restarts it when it exits, stops reporting for 3 minutes, or stays
+below 30% of its best speed for about 4 minutes while busy.
 
 ## Modules
 

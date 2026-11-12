@@ -1,5 +1,6 @@
 import "server-only";
 
+import { TOPIC_VALUES, topicKeywords } from "@/lib/agency-topics";
 import { createClient } from "@/lib/supabase/server";
 
 export const PAGE_SIZES = [25, 50, 100] as const;
@@ -16,11 +17,18 @@ export type AgencySortField = keyof typeof AGENCY_SORT_FIELDS;
 
 const RELEVANCE_FILTERS = ["A", "B", "C", "D", "E", "abc", "unrated"] as const;
 const ORIGINS = ["import", "osm", "link", "search", "manual"] as const;
+const CONTACTS = ["email", "no_email", "phone", "email_phone"] as const;
+const ADDED = ["1d", "7d", "30d"] as const;
+const ADDED_DAYS = { "1d": 1, "7d": 7, "30d": 30 } as const;
 
 export type AgencyFilters = {
   q: string;
-  country: string;
-  email: "with" | "without" | "";
+  /** Country codes; "none" = country unknown. Any of them matches. */
+  countries: string[];
+  /** "What they sell" topics; any of them matches. */
+  topics: string[];
+  contact: "" | (typeof CONTACTS)[number];
+  added: "" | (typeof ADDED)[number];
   status: "" | "ok" | "blocked" | "dead" | "unchecked";
   relevance: "" | (typeof RELEVANCE_FILTERS)[number];
   origin: "" | (typeof ORIGINS)[number];
@@ -38,6 +46,7 @@ export type AgencyRow = {
   country_name: string | null;
   description: string | null;
   phone: string | null;
+  city: string | null;
   website_status: string | null;
   last_checked_at: string | null;
   relevance: "A" | "B" | "C" | "D" | "E" | null;
@@ -57,12 +66,25 @@ export function parseFilters(params: Params): AgencyFilters {
     const v = params[key];
     return (Array.isArray(v) ? v[0] : v)?.trim() ?? "";
   };
+  const list = (key: string) =>
+    value(key)
+      .split(",")
+      .map((v) => v.trim())
+      .filter(Boolean);
   const size = Number.parseInt(value("size"), 10);
   const [sortField, sortDir] = value("sort").split(".");
+  // Older links used email=with|without.
+  const legacyEmail = { with: "email", without: "no_email" }[value("email")];
   return {
     q: value("q").slice(0, 100),
-    country: /^[A-Z]{2}$|^none$/.test(value("country")) ? value("country") : "",
-    email: oneOf(value("email"), ["with", "without"] as const),
+    countries: [
+      ...new Set(list("country").filter((c) => /^[A-Z]{2}$|^none$/.test(c))),
+    ].slice(0, 250),
+    topics: list("topic").filter((t) =>
+      (TOPIC_VALUES as readonly string[]).includes(t),
+    ),
+    contact: oneOf(value("contact") || legacyEmail || "", CONTACTS),
+    added: oneOf(value("added"), ADDED),
     status: oneOf(value("status"), [
       "ok",
       "blocked",
@@ -88,8 +110,10 @@ export function parseFilters(params: Params): AgencyFilters {
 export function hasFilters(filters: AgencyFilters) {
   return Boolean(
     filters.q ||
-    filters.country ||
-    filters.email ||
+    filters.countries.length ||
+    filters.topics.length ||
+    filters.contact ||
+    filters.added ||
     filters.status ||
     filters.relevance ||
     filters.origin,
@@ -103,31 +127,82 @@ export async function queryAgencies(
   { limit, offset }: { limit: number; offset: number },
 ) {
   const supabase = await createClient();
-  const contacts =
-    filters.email === "with"
-      ? "agency_contacts!inner(email)"
-      : "agency_contacts(email)";
+  const needsEmail =
+    filters.contact === "email" || filters.contact === "email_phone";
+  const contacts = needsEmail
+    ? "agency_contacts!inner(email)"
+    : "agency_contacts(email)";
   let query = supabase
     .from("agencies")
     .select(
-      `id, name, identity_key, website_url, country_code, country_name, description, phone, website_status, last_checked_at, relevance, relevance_keywords, origin, ${contacts}`,
+      `id, name, identity_key, website_url, country_code, country_name, description, phone, city, website_status, last_checked_at, relevance, relevance_keywords, origin, ${contacts}`,
       { count: "exact" },
     )
     .eq("workspace_id", workspaceId);
 
+  // Conditions where any part may match; combined with AND at the end.
+  const anyOf: string[] = [];
+
   const term = filters.q
-    .replace(/[%,()*]/g, " ")
+    .replace(/[%,()*"\\]/g, " ")
     .trim()
     .toLowerCase();
   if (term) {
-    query = query.or(
-      `normalized_name.ilike.%${term}%,identity_key.ilike.%${term}%,description.ilike.%${term}%`,
+    const like = `%${term}%`;
+    const parts = [
+      `normalized_name.ilike.${like}`,
+      `identity_key.ilike.${like}`,
+      `description.ilike.${like}`,
+      `city.ilike.${like}`,
+      `phone.ilike.${like}`,
+    ];
+    // Email addresses live on contacts: find those agencies first.
+    if (term.length >= 3) {
+      const { data: matches } = await supabase
+        .from("agency_contacts")
+        .select("agency_id")
+        .eq("workspace_id", workspaceId)
+        .ilike("email", like)
+        .limit(200)
+        .returns<{ agency_id: string }[]>();
+      const ids = [...new Set((matches ?? []).map((m) => m.agency_id))];
+      if (ids.length) parts.push(`id.in.(${ids.join(",")})`);
+    }
+    anyOf.push(parts.join(","));
+  }
+
+  const codes = filters.countries.filter((c) => c !== "none");
+  if (filters.countries.includes("none")) {
+    anyOf.push(
+      codes.length
+        ? `country_code.is.null,country_code.in.(${codes.join(",")})`
+        : "country_code.is.null",
+    );
+  } else if (codes.length) {
+    query = query.in("country_code", codes);
+  }
+
+  if (anyOf.length === 1) query = query.or(anyOf[0]!);
+  else if (anyOf.length > 1)
+    query = query.or(`and(${anyOf.map((g) => `or(${g})`).join(",")})`);
+
+  const keywords = topicKeywords(filters.topics);
+  if (keywords.length) {
+    query = query.overlaps(
+      "relevance_keywords",
+      `{${keywords.map((k) => `"${k}"`).join(",")}}`,
     );
   }
-  if (filters.country === "none") query = query.is("country_code", null);
-  else if (filters.country) query = query.eq("country_code", filters.country);
 
-  if (filters.email === "without") query = query.is("agency_contacts", null);
+  if (needsEmail) query = query.not("agency_contacts.email", "is", null);
+  if (filters.contact === "no_email") query = query.is("agency_contacts", null);
+  if (filters.contact === "phone" || filters.contact === "email_phone")
+    query = query.not("phone", "is", null);
+
+  if (filters.added) {
+    const since = Date.now() - ADDED_DAYS[filters.added] * 86_400_000;
+    query = query.gte("created_at", new Date(since).toISOString());
+  }
 
   if (filters.status === "ok") query = query.eq("website_status", "ok");
   else if (filters.status === "blocked")

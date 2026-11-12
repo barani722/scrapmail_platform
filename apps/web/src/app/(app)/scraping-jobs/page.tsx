@@ -8,6 +8,10 @@ import {
   JobStatusBadge,
 } from "@/components/app/job-status";
 import { LiveRefresh } from "@/components/app/live-refresh";
+import {
+  type WorkerStatus,
+  WorkerHealth,
+} from "@/components/app/worker-health";
 import { EmptyState, PageHeader } from "@/components/app/page-header";
 import { requireWorkspace } from "@/lib/auth/workspace";
 import { createClient } from "@/lib/supabase/server";
@@ -52,6 +56,7 @@ export default async function ScrapingJobsPage() {
     { data: usage },
     { count: linkSites },
     { data: ranking },
+    { data: worker },
   ] = await Promise.all([
     supabase
       .from("scrape_jobs")
@@ -75,6 +80,14 @@ export default async function ScrapingJobsPage() {
       .not("website_url", "is", null)
       .or("website_status.is.null,website_status.eq.ok"),
     supabase.rpc("search_country_ranking", { p_workspace_id: workspaceId }),
+    supabase
+      .from("worker_status")
+      .select(
+        "worker_id, state, updated_at, concurrency, running, tasks_per_minute, loop_lag_ms, oldest_task_seconds, restarts",
+      )
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle<WorkerStatus>(),
   ]);
 
   const rankedCountries = (ranking ?? []) as Ranking[];
@@ -101,6 +114,8 @@ export default async function ScrapingJobsPage() {
           />
         }
       />
+
+      <WorkerHealth status={worker ?? null} now={new Date().getTime()} />
 
       <section className="mb-6 rounded-xl border bg-card p-6 shadow-sm">
         <h2 className="text-lg font-bold">Find new agencies</h2>

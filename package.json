@@ -14,7 +14,8 @@
     "typecheck": "pnpm --filter @scrapmail/web typecheck",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "worker": "cd workers && uv run python -m scrapmail_worker.worker",
+    "worker": "cd workers && uv run python -m scrapmail_worker.supervisor",
+    "worker:single": "cd workers && uv run python -m scrapmail_worker.worker",
     "import:client": "cd workers && uv run python -m scrapmail_worker.importer --workspace scrapmail ../docs"
   },
   "devDependencies": {

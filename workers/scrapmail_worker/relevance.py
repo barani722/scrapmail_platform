@@ -461,6 +461,94 @@ TRAVEL = [
 ]
 
 
+# Businesses that talk about tickets and events but are not agencies. Matched in the
+# headline (title, site name, description) only: that is where a site says what it is.
+# Always "not an agency": software vendors, job sites, schools, public bodies.
+NOT_AGENCY = [
+    "software",
+    "saas",
+    "ticketing platform",
+    "ticketing software",
+    "ticketing system",
+    "event management software",
+    "event platform",
+    "jobs",
+    "job board",
+    "careers",
+    "recruitment",
+    "recruiting",
+    "vacancies",
+    "stellenangebote",
+    "emploi",
+    "empleo",
+    "ministry",
+    "municipality",
+    "city council",
+]
+# "Not an agency" unless the headline also says agency/operator/concierge: official
+# club and venue websites, trade shows, media, tourism boards.
+NOT_AGENCY_UNLESS_AGENCY = [
+    "official website",
+    "official site",
+    "official online store",
+    "official club",
+    "site officiel",
+    "sito ufficiale",
+    "web oficial",
+    "offizielle website",
+    "events venue",
+    "trade show",
+    "trade fair",
+    "travel show",
+    "exhibition centre",
+    "exhibition center",
+    "convention centre",
+    "convention center",
+    "conference centre",
+    "expo",
+    "magazine",
+    "blog",
+    "tourism board",
+    "tourist board",
+    "convention bureau",
+    "tourist information",
+    "university",
+    "universidad",
+    "universitat",
+    "universite",
+    "universita",
+]
+AGENCY_WORDS = [
+    "agency",
+    "agencies",
+    "travel agent",
+    "tour operator",
+    "tour operators",
+    "touroperator",
+    "concierge",
+    "conciergerie",
+    "dmc",
+    "destination management",
+    "packages",
+    "hospitality packages",
+    "travel packages",
+    "ticket packages",
+    "reiseburo",
+    "reisebuero",
+    "reiseveranstalter",
+    "agence",
+    "agencia",
+    "agenzia",
+    "reisbureau",
+    "resebyra",
+    "rejsebureau",
+    "reisebyra",
+    "matkatoimisto",
+    "biuro podrozy",
+    "voyagiste",
+]
+
+
 def _plain(text: str) -> str:
     text = unicodedata.normalize("NFKD", text)
     return "".join(c for c in text if not unicodedata.combining(c)).lower()
@@ -484,6 +572,9 @@ def _compile(words: list[str]) -> list[tuple[str, _Keyword]]:
 
 
 _GROUPS = {"tickets": _compile(TICKETS), "events": _compile(EVENTS), "travel": _compile(TRAVEL)}
+_NOT_AGENCY = _compile(NOT_AGENCY)
+_NOT_AGENCY_UNLESS = _compile(NOT_AGENCY_UNLESS_AGENCY)
+_AGENCY_WORDS = _compile(AGENCY_WORDS)
 
 
 @dataclass
@@ -524,4 +615,14 @@ def rate(text: str, headline: str = "") -> Relevance:
         level = "E"
 
     keywords = hits["tickets"] + hits["events"] + hits["travel"]
+
+    # Not an agency (club, venue, software, jobs …): at most D, with the reason kept.
+    hard = [word for word, pattern in _NOT_AGENCY if pattern.search(head)]
+    soft = [word for word, pattern in _NOT_AGENCY_UNLESS if pattern.search(head)]
+    agency = any(pattern.search(head) for _, pattern in _AGENCY_WORDS)
+    reasons = hard or ([] if agency else soft)
+    if reasons and level in ("A", "B", "C"):
+        level = "D"
+        keywords = [f"not an agency: {reasons[0]}", *keywords]
+
     return Relevance(level=level, score=min(score, 1000), keywords=keywords[:30])

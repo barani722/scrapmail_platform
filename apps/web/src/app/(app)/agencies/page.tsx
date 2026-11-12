@@ -3,7 +3,12 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import {
-  CountryFilter,
+  ActiveFilters,
+  CountriesFilter,
+  QuickViews,
+  TopicsFilter,
+} from "@/components/app/agency-filters";
+import {
   FilterSelect,
   Pagination,
   SearchInput,
@@ -94,12 +99,13 @@ export default async function AgenciesPage({ searchParams }: Props) {
         }
       />
 
-      <div className="mb-4 flex flex-wrap items-center gap-3">
+      <QuickViews />
+      <div className="mb-3 flex flex-wrap items-center gap-3">
         <SearchInput
-          placeholder="Search name, website or services…"
+          placeholder="Search name, website, email, city, phone or services…"
           className="max-w-md"
         />
-        <CountryFilter
+        <CountriesFilter
           counts={Object.fromEntries(
             countries
               .filter((c) => c.country_code)
@@ -107,6 +113,7 @@ export default async function AgenciesPage({ searchParams }: Props) {
           )}
           unknown={Number(countries.find((c) => !c.country_code)?.total ?? 0)}
         />
+        <TopicsFilter />
         <FilterSelect
           param="relevance"
           label="Relevance"
@@ -133,12 +140,24 @@ export default async function AgenciesPage({ searchParams }: Props) {
           ]}
         />
         <FilterSelect
-          param="email"
-          label="Email"
+          param="contact"
+          label="Contact details"
           options={[
-            { value: "", label: "Any email status" },
-            { value: "with", label: "With email" },
-            { value: "without", label: "Without email" },
+            { value: "", label: "Any contact details" },
+            { value: "email", label: "With email" },
+            { value: "email_phone", label: "With email and phone" },
+            { value: "phone", label: "With phone" },
+            { value: "no_email", label: "Without email" },
+          ]}
+        />
+        <FilterSelect
+          param="added"
+          label="Added"
+          options={[
+            { value: "", label: "Added any time" },
+            { value: "1d", label: "Added today" },
+            { value: "7d", label: "Added this week" },
+            { value: "30d", label: "Added this month" },
           ]}
         />
         <FilterSelect
@@ -152,6 +171,9 @@ export default async function AgenciesPage({ searchParams }: Props) {
             { value: "dead", label: "Offline / not found" },
           ]}
         />
+      </div>
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <ActiveFilters />
         <Pagination
           page={filters.page}
           pageSize={filters.size}
@@ -190,7 +212,7 @@ export default async function AgenciesPage({ searchParams }: Props) {
                   </SortHeader>
                 </th>
                 <th className="px-4 py-3 font-medium">Services</th>
-                <th className="px-4 py-3 font-medium">Emails</th>
+                <th className="px-4 py-3 font-medium">Contact</th>
                 <th className="px-4 py-3">
                   <SortHeader field="checked" current={filters.sort}>
                     Website
@@ -226,6 +248,11 @@ export default async function AgenciesPage({ searchParams }: Props) {
                     </td>
                     <td className="px-4 py-3">
                       {countryName(a.country_code) ?? a.country_name ?? "—"}
+                      {a.city && (
+                        <div className="text-xs text-muted-foreground">
+                          {a.city}
+                        </div>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       <RelevanceBadge
@@ -249,6 +276,11 @@ export default async function AgenciesPage({ searchParams }: Props) {
                         <span className="ml-1 rounded-full bg-accent px-1.5 text-xs text-accent-foreground">
                           +{emails.length - 1}
                         </span>
+                      )}
+                      {a.phone && (
+                        <div className="text-xs whitespace-nowrap text-muted-foreground">
+                          {a.phone}
+                        </div>
                       )}
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">
