@@ -15,7 +15,7 @@ talk to Supabase with the secret key (server-side only).
 | -------------------- | ---------------------------------------------------------------------- |
 | `pnpm worker`        | Start the worker under the supervisor (auto-restart; stop: Ctrl+C)     |
 | `pnpm worker:single` | Start one worker without the supervisor                                |
-| `pnpm emails:check`  | Clean and DNS-check contact emails (dry run; add `-- --write` to save) |
+| `pnpm emails:check`  | Clean and DNS-check contact emails (dry run; add `--write` to save)  |
 | `pnpm import:client` | Dry run of the client spreadsheet import (`docs/`); add `-- --write`   |
 
 Several workers can run at once; each claims tasks atomically from the

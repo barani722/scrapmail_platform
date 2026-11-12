@@ -14,8 +14,9 @@ Checking deletes nothing. For each contact:
 A cleaned address that another contact of the same agency already has is not
 changed (the database allows each address once per agency); it is marked duplicate.
 
---remove (on request) deletes the contacts marked invalid, and the duplicates after
-copying their name, title and phone to the clean contact they repeat. Deleted rows
+--remove (on request) keeps only valid addresses: it deletes contacts marked invalid,
+no_mail_server or unverified, and duplicates after copying their name, title and
+phone to the clean contact they repeat. Deleted rows
 are recorded in the audit log.
 """
 
@@ -134,7 +135,7 @@ def main() -> None:
     parser.add_argument(
         "--remove",
         action="store_true",
-        help="delete invalid contacts and duplicates (merged into their clean twin first)",
+        help="keep only valid addresses (duplicates are merged into their clean twin first)",
     )
     args = parser.parse_args()
 

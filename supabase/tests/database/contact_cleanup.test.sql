@@ -30,19 +30,21 @@ select ok(
 create temp table tap_expected as
   select array[
     'duplicate:' || count(*) filter (where email_status = 'duplicate'),
-    'invalid:' || count(*) filter (where email_status = 'invalid')
+    'invalid:' || count(*) filter (where email_status = 'invalid'),
+    'no_mail_server:' || count(*) filter (where email_status = 'no_mail_server'),
+    'unverified:' || count(*) filter (where email_status = 'unverified')
   ] as kinds
   from public.agency_contacts;
 select is(
   (select array_agg(kind || ':' || removed order by kind) from public.remove_unusable_contacts()),
   (select kinds from tap_expected),
-  'every duplicate (with a clean twin) and every invalid contact is removed'
+  'every contact that is not valid is removed'
 );
 select is(
   (select array_agg(email order by email) from public.agency_contacts
     where agency_id = '00000000-0000-0000-0000-0000000000d2'),
-  array['info@cleanup-travel.test', 'ops@cleanup-travel.test'],
-  'the clean address and the not-invalid one stay'
+  array['info@cleanup-travel.test'],
+  'only the valid address stays'
 );
 select is(
   (select full_name from public.agency_contacts where email = 'info@cleanup-travel.test'),

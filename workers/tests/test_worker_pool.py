@@ -145,19 +145,21 @@ def test_speed_meter_counts_the_last_minute():
     assert meter.per_minute(now=100.0) == 10
 
 
-def test_new_contacts_are_checked_and_dead_domains_skipped():
+def test_only_new_contacts_with_a_mail_domain_are_saved():
     worker = make_worker(2)
     saved: list[dict] = []
 
     class Domains:
         async def check(self, domain):
-            return "ok" if domain == "agency.com" else "no_domain"
+            return {"agency.com": "ok", "nomail.com": "no_mail_server"}.get(domain, "no_domain")
 
     async def fake_db(method, table, rows, **kwargs):
         saved.extend(rows)
 
     worker.domains = Domains()
     worker._db = fake_db
-    asyncio.run(worker._save_contacts("ws", "ag", ["info@agency.com", "info@gone.com"]))
-    # The address on a domain that does not exist is not saved.
+    asyncio.run(
+        worker._save_contacts("ws", "ag", ["info@agency.com", "info@gone.com", "a@nomail.com"])
+    )
+    # Only the address whose domain accepts email is saved.
     assert [(r["email"], r["email_status"]) for r in saved] == [("info@agency.com", "valid")]
