@@ -33,15 +33,6 @@ type Contact = {
 type EmailStatus =
   "valid" | "unverified" | "no_mail_server" | "invalid" | "duplicate";
 
-/** Email status filter: usable addresses by default, problems on request. */
-const STATUS_VIEWS: Record<string, EmailStatus[] | null> = {
-  "": ["valid"], // plus not yet checked (new imports)
-  review: ["unverified", "no_mail_server"],
-  invalid: ["invalid"],
-  duplicate: ["duplicate"],
-  all: null,
-};
-
 const STATUS_BADGE: Record<
   EmailStatus,
   { label: string; tone: "success" | "warning" | "danger" | "neutral" }
@@ -79,9 +70,6 @@ export default async function ContactsPage({ searchParams }: Props) {
     : "";
   // Filters on the agency need an inner join (contacts of matching agencies only).
   const byAgency = countries.length > 0 || relevance !== "";
-  const statusView =
-    (params.status ?? "") in STATUS_VIEWS ? params.status! : "";
-  const statuses = STATUS_VIEWS[statusView];
 
   const supabase = await createClient();
   const countsPromise = supabase.rpc("agency_country_counts", {
@@ -102,9 +90,8 @@ export default async function ContactsPage({ searchParams }: Props) {
   // Conditions where any part may match; combined with AND.
   const anyOf: string[] = [];
   if (term) anyOf.push(`email.ilike.%${term}%,full_name.ilike.%${term}%`);
-  if (statusView === "")
-    anyOf.push("email_status.is.null,email_status.eq.valid");
-  else if (statuses) query = query.in("email_status", statuses);
+  // Only valid addresses (and new ones not checked yet, e.g. from an import).
+  anyOf.push("email_status.is.null,email_status.eq.valid");
   if (anyOf.length === 1) query = query.or(anyOf[0]!);
   else if (anyOf.length > 1)
     query = query.or(`and(${anyOf.map((g) => `or(${g})`).join(",")})`);
@@ -122,18 +109,12 @@ export default async function ContactsPage({ searchParams }: Props) {
     total: number;
   }[];
   const filtered = Boolean(term || source || kind || byAgency);
-  const what =
-    statusView === ""
-      ? "usable email contacts"
-      : statusView === "all"
-        ? "email contacts (all statuses)"
-        : "email contacts with this status";
 
   return (
     <>
       <PageHeader
         title="Contacts"
-        description={`${total.toLocaleString()} ${what}${filtered ? " match your filters" : ""}.`}
+        description={`${total.toLocaleString()} valid email contacts${filtered ? " match your filters" : ""}.`}
         actions={
           <LiveRefresh
             tables={["scrape_jobs"]}
@@ -152,17 +133,6 @@ export default async function ContactsPage({ searchParams }: Props) {
               .map((c) => [c.country_code as string, Number(c.total)]),
           )}
           unknown={0}
-        />
-        <FilterSelect
-          param="status"
-          label="Email status"
-          options={[
-            { value: "", label: "Usable emails" },
-            { value: "review", label: "Not verified / no mail server" },
-            { value: "invalid", label: "Invalid" },
-            { value: "duplicate", label: "Duplicates" },
-            { value: "all", label: "All statuses" },
-          ]}
         />
         <FilterSelect
           param="relevance"
