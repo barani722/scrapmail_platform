@@ -56,6 +56,11 @@ export default async function AdminUsersPage() {
   const lastSignIn = new Map(
     (authUsers.data?.users ?? []).map((u) => [u.id, u.last_sign_in_at ?? null]),
   );
+  const unconfirmed = new Set(
+    (authUsers.data?.users ?? [])
+      .filter((u) => !u.email_confirmed_at)
+      .map((u) => u.id),
+  );
   const pending = users?.filter((u) => u.status === "pending").length ?? 0;
 
   return (
@@ -102,7 +107,19 @@ export default async function AdminUsersPage() {
                         </StatusBadge>
                       )}
                     </td>
-                    <td className="px-5 py-4">{user.email}</td>
+                    <td className="px-5 py-4">
+                      {user.email}
+                      {unconfirmed.has(user.user_id) && (
+                        <div
+                          className="mt-1"
+                          title="The user has not clicked the link in the confirmation email yet. Approving the account confirms it."
+                        >
+                          <StatusBadge tone="warning">
+                            email not confirmed
+                          </StatusBadge>
+                        </div>
+                      )}
+                    </td>
                     <td className="px-5 py-4 whitespace-nowrap text-muted-foreground">
                       {new Date(user.created_at).toLocaleDateString("en-GB")}
                     </td>

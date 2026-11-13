@@ -46,12 +46,16 @@ export async function setAccountStatus(
   if (error) return { ok: false, error: error.message };
 
   // Only approved accounts may sign in; others are blocked in Supabase Auth,
-  // which also ends their active sessions.
+  // which also ends their active sessions. Approving also confirms the email
+  // address: the administrator vouches for the account, so a confirmation
+  // email that never arrived (spam, mail limits) cannot lock the user out.
+  const approved = parsed.data.status === "approved";
   const admin = createAdminClient();
   const { error: banError } = await admin.auth.admin.updateUserById(
     parsed.data.userId,
     {
-      ban_duration: parsed.data.status === "approved" ? "none" : "876000h",
+      ban_duration: approved ? "none" : "876000h",
+      ...(approved ? { email_confirm: true } : {}),
     },
   );
   if (banError) return { ok: false, error: banError.message };

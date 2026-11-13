@@ -51,7 +51,10 @@ export async function signIn(
       return { error: "This account is not active. Contact an administrator." };
     }
     if (error.code === "email_not_confirmed") {
-      return { error: "Please confirm your email address first." };
+      return {
+        error:
+          "Please confirm your email address first: open the link in the email we sent you (check your spam folder too). Once an administrator approves your account, this step is no longer needed.",
+      };
     }
     return { error: "Incorrect email or password." };
   }
