@@ -5,7 +5,26 @@ import { LoginForm } from "@/components/auth/login-form";
 
 export const metadata: Metadata = { title: "Sign in" };
 
-export default function LoginPage() {
+/** Messages after following an email confirmation link (see /auth/callback). */
+const NOTICES = {
+  confirmed: {
+    message: "Your email address is confirmed. Sign in to continue.",
+  },
+  link_invalid: {
+    error:
+      "This confirmation link has expired or was already used. Try signing in; if your email is still not confirmed, ask an administrator to approve your account.",
+  },
+} as const;
+
+type Props = { searchParams: Promise<{ notice?: string }> };
+
+export default async function LoginPage({ searchParams }: Props) {
+  const { notice } = await searchParams;
+  const initial =
+    notice && notice in NOTICES
+      ? NOTICES[notice as keyof typeof NOTICES]
+      : undefined;
+
   return (
     <AuthShell
       headline="Agency discovery and email outreach platform"
@@ -17,7 +36,7 @@ export default function LoginPage() {
       <p className="mt-2 mb-8 text-lg text-muted-foreground">
         Sign in to your account to continue.
       </p>
-      <LoginForm />
+      <LoginForm initial={initial} />
       <SecureNote title="Secure sign-in" />
     </AuthShell>
   );

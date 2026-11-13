@@ -6,17 +6,18 @@ import { useActionState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { signIn } from "@/lib/auth/actions";
+import { type FormState, signIn } from "@/lib/auth/actions";
 
 import { FormAlert } from "./form-alert";
 import { IconInput, PasswordInput } from "./icon-input";
 
-export function LoginForm() {
-  const [state, action, pending] = useActionState(signIn, undefined);
+/** `initial`: a message shown before the first attempt (e.g. email confirmed). */
+export function LoginForm({ initial }: { initial?: FormState }) {
+  const [state, action, pending] = useActionState(signIn, initial);
 
   return (
     <form action={action} className="space-y-6">
-      <FormAlert error={state?.error} />
+      <FormAlert error={state?.error} message={state?.message} />
 
       <div className="space-y-2">
         <Label htmlFor="email">Email</Label>
